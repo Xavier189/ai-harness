@@ -16,7 +16,7 @@
 ## 架构地图
 
 - `ai_harness.py` — 单文件 Python3 CLI（约 1440 行）：全部生成逻辑/命令/校验都在此，零运行时依赖（仅标准库）。`pyproject.toml` 把它暴露为 `harness` 命令。
-- `tests/` — unittest（36 tests）；`evals/` — 声明式行为场景 runner（4 场景）。
+- `tests/` — unittest（40 tests）；`evals/` — 声明式行为场景 runner（5 场景）。
 - `skills/ai-harness-init/` — 给「要安装本 harness 的项目」用的 meta-skill。
 - `.agents/skills/ai-harness/` — skill 唯一真实来源（同时是 Codex 原生扫描目录）；`.claude/skills/ai-harness` 软链指回。
 - `docs/`、`VERSIONING.md` — 评审依据与版本治理。

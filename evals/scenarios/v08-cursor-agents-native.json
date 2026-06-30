@@ -1,0 +1,21 @@
+{
+  "description": "v0.8：init 后 .agents/skills/ 为唯一来源，无需 .cursor/skills/ 副本，check 0 error",
+  "setup": {},
+  "steps": [
+    ["init", "--profile", "core", "--agent", "claude"],
+    ["check"]
+  ],
+  "expect": {
+    "exit": 0,
+    "file_exists": [
+      ".agents/skills/ai-harness/SKILL.md"
+    ],
+    "file_absent": [
+      ".cursor/skills/ai-harness/SKILL.md"
+    ],
+    "file_contains": {
+      ".agents/skills/ai-harness/SKILL.md": "name: ai-harness"
+    },
+    "stdout_contains": ["0 error(s)"]
+  }
+}

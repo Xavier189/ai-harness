@@ -11,6 +11,6 @@
 - 任务属于 active phase 时才读取 `.harness/phases/current/PLAN.md`。
 - 默认不读 `.harness/phases/archive/**`；需要历史上下文时使用 `harness recall <keyword>`。
 - 保持本入口文件短小；稳定 policy 放到 `docs/ai-harness/POLICIES.md`。
-- Skill 唯一来源在 `.agents/skills/ai-harness/SKILL.md`（Codex 原生扫描该目录；Claude 经 `.claude/skills/ai-harness` 软链指回）。
+- Skill 唯一来源在 `.agents/skills/ai-harness/SKILL.md`（Codex / Cursor 原生扫描；Claude 经 `.claude/skills/ai-harness` 软链指回）。
 - Core profile 已启用；项目专属技术 policy 可追加到 `docs/ai-harness/POLICIES.md`。
 <!-- AI-HARNESS:ROUTER:END -->

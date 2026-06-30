@@ -13,7 +13,7 @@
 | 4 | v0.5 | 打磨/演进（D6/B5/B6/D5/C4） | done |
 | 5 | v0.6 | Codex/AGENTS.md 单文件引用 skill | done |
 | 6 | v0.7 | 分发打包：pyproject + console_scripts，`uvx`/`pipx`/`uv tool install` 一行安装 | done |
-| 7 | v0.8 | Cursor 适配：`--with-cursor` 复制到 `.cursor/skills/` + 陈旧检测 | done |
+| 7 | v0.8 | Cursor 适配：原生扫描 `.agents/skills/`（撤销复制方案） | done |
 | 8 | release | 发布 PyPI（`uvx ai-harness` 免 --from）+ CHANGELOG（LICENSE/CI 已就绪） | planned |
 
 > 适配范围已收敛到 Claude / Codex / Cursor；更多平台（Windsurf/Aider/Gemini）**暂不做**，见 `docs/ai-harness/OUT-OF-SCOPE.md`。
