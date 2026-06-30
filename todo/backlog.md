@@ -13,9 +13,10 @@
 - [ ] `harness --version`；语义化版本与 schemaVersion 解耦（H）。
 - [ ] 一键安装脚本（curl | sh）作为无 Python 包管理时的回退（M）。
 
-## B. 平台广度（M）
-现状：只绑 Claude Code（CLAUDE.md / .claude）+ Codex（AGENTS.md）。
-- [ ] 通用 `AGENTS.md` 标准对齐；可选适配 Cursor（.cursorrules）、Windsurf、Gemini（M）。
+## B. 平台广度（M）—— Cursor ✅ v0.8
+现状：Claude Code（软链）+ Codex（`.agents/skills` 原生）+ Cursor（`--with-cursor` 复制）已支持。
+- [x] Cursor 适配：`--with-cursor` 复制到 `.cursor/skills/`（v0.8 完成；Cursor 不跟随软链，故复制 + 陈旧检测）。
+- [ ] Windsurf / Aider / Gemini / VS Code 按需适配（各查 skills 路径 + 软链支持）（M）。
 - [ ] 打包成 Claude Code plugin / marketplace 条目（M），对照 Superpowers 的分发方式。
 - [ ] subagents 定义（`.claude/agents/`）随 init 可选生成（L）。
 

@@ -113,9 +113,9 @@ yarn-error.log
 **/.claude/.cache/
 .claude/logs/
 **/.claude/logs/
-# Cursor（根目录及任意子目录）
-.cursor/
-**/.cursor/
+# Cursor：忽略 IDE 临时文件，但保留 .cursor/skills（harness --with-cursor 生成的 skill 副本，需随仓库共享）
+.cursor/*
+!.cursor/skills/
 # 通用本地覆盖配置
 settings.local.json
 **/settings.local.json

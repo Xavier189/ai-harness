@@ -579,6 +579,62 @@ class HarnessCliTest(unittest.TestCase):
             result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
             self.assertEqual(result["summary"]["errors"], 0)
 
+    # ---- v0.8：Cursor 适配（复制，Cursor 不跟随软链）----
+
+    def test_init_without_cursor_creates_no_cursor_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "claude"), 0)
+            self.assertFalse((root / ".cursor").exists())
+
+    def test_init_with_cursor_copies_skill_as_real_files(self) -> None:
+        # v0.8：--with-cursor 把 skill 复制（非软链）到 .cursor/skills/，内容与 .agents 源一致。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(
+                self.run_cli(root, "init", "--profile", "core", "--agent", "claude", "--with-cursor"), 0
+            )
+            cursor_skill = root / ".cursor/skills/ai-harness/SKILL.md"
+            self.assertTrue(cursor_skill.exists())
+            self.assertFalse((root / ".cursor/skills/ai-harness").is_symlink(), "Cursor 不跟随软链，应为复制")
+            self.assertEqual(
+                cursor_skill.read_text(encoding="utf-8"),
+                (root / ".agents/skills/ai-harness/SKILL.md").read_text(encoding="utf-8"),
+            )
+            # 幂等：再跑不报变更
+            code, out = self.run_cli_capture(root, "init", "--profile", "core", "--agent", "claude", "--with-cursor")
+            self.assertEqual(code, 0)
+            self.assertNotIn(".cursor/skills/ai-harness/ (copy", out)
+
+    def test_check_warns_on_stale_cursor_copy(self) -> None:
+        # v0.8：源改了但 Cursor 副本没同步 → check warning（陈旧）。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(
+                self.run_cli(root, "init", "--profile", "core", "--agent", "claude", "--with-cursor"), 0
+            )
+            # 改源，制造副本陈旧
+            src = root / ".agents/skills/ai-harness/SKILL.md"
+            src.write_text(src.read_text(encoding="utf-8") + "\n<!-- 源更新了 -->\n", encoding="utf-8")
+            self.run_cli(root, "check")
+            result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
+            messages = [i["message"] for i in result["issues"]]
+            self.assertTrue(any("Cursor skill 副本" in m and "陈旧" in m for m in messages), messages)
+
+    def test_upgrade_auto_syncs_existing_cursor_copy(self) -> None:
+        # v0.8：已启用 Cursor 副本时，upgrade 自动同步到最新（无需再带 --with-cursor）。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(
+                self.run_cli(root, "init", "--profile", "core", "--agent", "claude", "--with-cursor"), 0
+            )
+            src = root / ".agents/skills/ai-harness/SKILL.md"
+            src.write_text(src.read_text(encoding="utf-8") + "\n<!-- 源更新了 -->\n", encoding="utf-8")
+            self.assertEqual(self.run_cli(root, "upgrade", "--apply"), 0)  # 不带 --with-cursor 也同步
+            cursor_skill = root / ".cursor/skills/ai-harness/SKILL.md"
+            self.assertIn("源更新了", cursor_skill.read_text(encoding="utf-8"))
+            self.assertEqual(self.run_cli(root, "check"), 0)  # 同步后不再陈旧
+
     @staticmethod
     def _fingerprint(root: Path) -> dict:
         skip = {".harness/checks/latest.json"}

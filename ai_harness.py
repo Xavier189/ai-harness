@@ -35,6 +35,7 @@ CURRENT_FILES = ("PLAN.md", "PROGRESS.yml", "EVIDENCE.md", "HANDOFF.md")
 # Skill 唯一真实来源放 .agents/，Claude 侧用软链指回，避免多份事实来源。
 SKILL_CANONICAL_DIR = ".agents/skills/ai-harness"
 SKILL_LINK_DIR = ".claude/skills/ai-harness"
+CURSOR_SKILL_DIR = ".cursor/skills/ai-harness"  # Cursor 不跟随软链，故为复制副本（check 检测陈旧）
 
 # 既有库旧命名 -> 新结构的安全 rename 映射（仅当目标不存在才移动）。
 MIGRATIONS = (
@@ -117,6 +118,37 @@ def ensure_symlink(link: Path, target: Path, dry_run: bool = False) -> bool:
             shutil.copytree(target, link)
         else:
             shutil.copy2(target, link)
+    return True
+
+
+def _skill_in_sync(src: Path, dst: Path) -> bool:
+    """逐文件比对两个 skill 目录内容是否完全一致。"""
+    if not dst.exists():
+        return False
+    src_files = {p.relative_to(src): p for p in src.rglob("*") if p.is_file()}
+    dst_files = {p.relative_to(dst): p for p in dst.rglob("*") if p.is_file()}
+    if set(src_files) != set(dst_files):
+        return False
+    return all(sp.read_bytes() == dst_files[rel].read_bytes() for rel, sp in src_files.items())
+
+
+def ensure_cursor_skill(root: Path, dry_run: bool = False) -> bool:
+    """把 skill 唯一来源复制到 .cursor/skills/（Cursor 不跟随软链，只能复制）。
+
+    返回 True 表示发生了变更。副本与源不一致时整体覆盖，保证与 .agents/ 源一致。
+    """
+    src = root / SKILL_CANONICAL_DIR
+    dst = root / CURSOR_SKILL_DIR
+    if not src.exists():
+        return False
+    if _skill_in_sync(src, dst):
+        return False
+    if dry_run:
+        return True
+    if dst.exists():
+        shutil.rmtree(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
     return True
 
 
@@ -597,6 +629,10 @@ def init_harness(args: argparse.Namespace) -> int:
         for rel in write_harness_commands(root, dry_run=dry):
             changes.append(rel)
 
+    if args.with_cursor:
+        if ensure_cursor_skill(root, dry_run=dry):
+            changes.append(f"{CURSOR_SKILL_DIR}/ (copy of {SKILL_CANONICAL_DIR})")
+
     issues = run_checks(root)
     write_check_result(root, issues, dry_run=dry)
 
@@ -748,6 +784,11 @@ def upgrade(args: argparse.Namespace) -> int:
     if args.with_commands:
         for rel in write_harness_commands(root, dry_run=dry):
             added.append(rel)
+
+    # 已启用 Cursor 副本则自动同步到最新；--with-cursor 显式生成。
+    if args.with_cursor or (root / CURSOR_SKILL_DIR).exists():
+        if ensure_cursor_skill(root, dry_run=dry):
+            added.append(f"{CURSOR_SKILL_DIR}/ (synced from {SKILL_CANONICAL_DIR})")
 
     bumped = str(from_version) != str(SCHEMA_VERSION)
     if bumped and not dry:
@@ -1150,7 +1191,21 @@ def run_checks(root: Path) -> list[Issue]:
     issues.extend(check_state_consistency(root, state))
     issues.extend(check_layering(root))
     issues.extend(check_skill_symlink(root))
+    issues.extend(check_cursor_skill(root))
     return issues
+
+
+def check_cursor_skill(root: Path) -> list[Issue]:
+    """Cursor skill 是 .agents/ 源的复制副本（Cursor 不跟随软链）；副本陈旧时 warning。"""
+    dst = root / CURSOR_SKILL_DIR
+    if not dst.exists():
+        return []  # 未启用 Cursor 适配
+    if not _skill_in_sync(root / SKILL_CANONICAL_DIR, dst):
+        return [Issue(
+            "warning", CURSOR_SKILL_DIR,
+            "Cursor skill 副本与 .agents/ 源不一致（已陈旧），运行 `harness upgrade --with-cursor` 同步",
+        )]
+    return []
 
 
 def check_skill_symlink(root: Path) -> list[Issue]:
@@ -1395,6 +1450,8 @@ def build_parser() -> argparse.ArgumentParser:
     init_cmd.add_argument("--with-hooks", action="store_true")
     init_cmd.add_argument("--with-commands", action="store_true",
                           help="在 .claude/commands/ 生成 harness-* slash command 模板（默认关）")
+    init_cmd.add_argument("--with-cursor", action="store_true",
+                          help="把 skill 复制到 .cursor/skills/（Cursor 不跟随软链，故复制；默认关）")
     init_cmd.add_argument("--dry-run", action="store_true")
     init_cmd.set_defaults(func=init_harness)
 
@@ -1404,6 +1461,8 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade_cmd.add_argument("--with-hooks", action="store_true")
     upgrade_cmd.add_argument("--with-commands", action="store_true",
                              help="在 .claude/commands/ 生成 harness-* slash command 模板（默认关）")
+    upgrade_cmd.add_argument("--with-cursor", action="store_true",
+                             help="把 skill 同步到 .cursor/skills/（已启用则 upgrade 自动同步）")
     upgrade_cmd.set_defaults(func=upgrade)
 
     doctor_cmd = sub.add_parser("doctor")

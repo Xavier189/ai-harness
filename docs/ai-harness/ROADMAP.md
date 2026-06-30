@@ -13,8 +13,9 @@
 | 4 | v0.5 | 打磨/演进（D6/B5/B6/D5/C4） | done |
 | 5 | v0.6 | Codex/AGENTS.md 单文件引用 skill | done |
 | 6 | v0.7 | 分发打包：pyproject + console_scripts，`uvx`/`pipx`/`uv tool install` 一行安装 | done |
-| 7 | v0.8+ | Cursor / Windsurf / Aider / Gemini 适配（按需顺延） | planned |
-| 8 | release | 发布 PyPI（`uvx ai-harness` 免 --from）+ LICENSE / CI / CHANGELOG | planned |
+| 7 | v0.8 | Cursor 适配：`--with-cursor` 复制到 `.cursor/skills/` + 陈旧检测 | done |
+| 8 | v0.9+ | Windsurf / Aider / Gemini 按需顺延 | planned |
+| 9 | release | 发布 PyPI（`uvx ai-harness` 免 --from）+ CHANGELOG（LICENSE/CI 已就绪） | planned |
 
 详细：分发与多工具路线见 `todo/multi-tool-roadmap.md`；打磨项见 `todo/v0.5-plan.md`；评审依据见 `docs/REVIEW-AND-ROADMAP.md`。
 

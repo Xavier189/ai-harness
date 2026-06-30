@@ -21,12 +21,12 @@
 - **v0.5**：D6 收敛 current/ 冗余、B5 强化测试 + `evals/`、B6 lessons 阈值 check、D5 OUT-OF-SCOPE、C4 `--with-commands`。
 - **v0.6**：AGENTS.md/CLAUDE.md ROUTER 指明 skill 唯一来源；确认 Codex 原生扫描 `.agents/skills/`。
 - **v0.7**：分发打包——`pyproject.toml` + console_scripts（单文件模块 `ai_harness.py`），支持 `uv tool install` / `pipx install` / `uvx --from` 一行安装，`harness` 进 PATH（实测通过）。
+- **v0.8**：Cursor 适配——`--with-cursor` 把 skill 复制到 `.cursor/skills/`（Cursor 不跟随软链，故复制）；`check` 检测副本陈旧，`upgrade` 对已启用的自动同步。本仓库已 dogfood 启用。
 
 ## 下一步
 
-1. v0.8（待执行）：Cursor 适配——复制 `.agents/skills/` → `.cursor/skills/`（Cursor 不跟随软链）；见 `todo/multi-tool-roadmap.md`。
-2. 发布到 PyPI（让 `uvx ai-harness` / `pipx install ai-harness` 免 `--from`）；补 LICENSE / CI / CHANGELOG，见 `todo/backlog.md`。
-3. v0.9+：Windsurf / Aider / Gemini / VS Code 按需适配。
+1. v0.9（待执行）：Windsurf / Aider / Gemini / VS Code 按需适配（各查 skills 路径 + 软链支持，再定软链 or 复制）。
+2. 发布到 PyPI（让 `uvx ai-harness` / `pipx install ai-harness` 免 `--from`）；补 CHANGELOG（LICENSE/CI 已就绪），见 `todo/backlog.md`。
 
 ## 阻塞
 

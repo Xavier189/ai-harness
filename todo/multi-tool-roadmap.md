@@ -33,6 +33,7 @@
 - **v0.5（✅）**：D6（checkpoint 不污染 HANDOFF）/ B5（4 单测 + `evals/` runner 与 4 场景）/ B6（lessons 超阈值 warning）/ D5（项目级 `OUT-OF-SCOPE.md`）/ C4（`--with-commands` 生成 slash command 模板）。
 - **v0.6（✅）**：AGENTS.md / CLAUDE.md ROUTER 增一行指明 skill 唯一来源位置。**措辞已修正**：Codex 是**原生扫描 `.agents/skills/`** 发现 skill，**不是**靠读这行；这行对人类读者是文档指针，启动加载量不增。
 - **v0.7（✅）**：分发打包——`pyproject.toml` + console_scripts，核心移到单文件模块 `ai_harness.py`（保住单文件零依赖），暴露 `harness` / `ai-harness` 双命令。支持 `uv tool install` / `pipx install` / `uvx --from`（git 或本地路径）一行安装。**实测**：uvx 一行在空目录生成完整骨架、`uv tool install` 后裸 `harness` 命令全链路通过。
+- **v0.8（✅）**：Cursor 适配——`--with-cursor` 把 skill **复制**到 `.cursor/skills/`（Cursor 不跟随软链，无法软链，只能复制）。`check` 检测副本与 `.agents/` 源不一致（陈旧）并 warning；`upgrade` 对已启用的副本自动同步。本仓库已 dogfood 启用 `.cursor/skills/ai-harness`。
 
 ---
 
@@ -44,12 +45,12 @@
 | **v0.5** | 打磨/演进（D6/B5/B6/D5/C4） | 36 单测 + 4 evals 全绿；check 0/0 | ✅ done |
 | **v0.6** | AGENTS.md 指明 skill 来源（+ 确认 Codex 原生支持）| ROUTER 引用 + 文档化「Codex 原生扫 `.agents/skills/`」事实 | ✅ done |
 | **v0.7** | 分发打包（pyproject + console_scripts）| `uv tool install` / `pipx` / `uvx --from` 一行安装，`harness` 进 PATH；实测通过 | ✅ done |
-| **v0.8** | **Cursor 适配（方案已修正）** | 新增 `--with-cursor`：**复制** `.agents/skills/ai-harness/` → `.cursor/skills/ai-harness/`（Cursor 不跟随软链，故只能复制）；`check` 检测副本与源不一致（陈旧）；幂等 + 测试 | 中 |
+| **v0.8** | Cursor 适配（复制，非软链）| `--with-cursor` 复制 `.agents/skills/` → `.cursor/skills/`；`check` 检测陈旧；`upgrade` 自动同步；幂等 + 4 测试 | ✅ done |
 | **v0.9+** | Windsurf / Aider / Gemini / VS Code 按需 | 先查各自 skills 路径与软链支持，再决定软链 or 复制；各加 `--with-<tool>` + check + 测试；不强加 | 低 |
-| **release** | 发布 PyPI + OSS 治理 | `uvx ai-harness` 免 --from；LICENSE / CI / CHANGELOG | 低 |
+| **release** | 发布 PyPI + OSS 治理 | `uvx ai-harness` 免 --from；CHANGELOG（LICENSE/CI 已就绪） | 低 |
 
-> **v0.8 关键修正**：原方案写「生成 `.cursor/rules/*.mdc`」是**错的**——`.mdc` 是 Cursor 的 **rules**（`.cursorrules` 已废弃，迁到 `.cursor/rules/*.mdc` 或 AGENTS.md），不是 skill 包。
-> Cursor 读 **skill** 走 `.cursor/skills/`，且**不跟随软链**，所以用**复制 + 陈旧检测**，不是软链、不是 .mdc 转换。
+> **Cursor 关键点**：`.mdc` 是 Cursor 的 **rules**（`.cursorrules` 已废弃，迁到 `.cursor/rules/*.mdc` 或 AGENTS.md），不是 skill 包。
+> Cursor 读 **skill** 走 `.cursor/skills/`，且**不跟随软链**，所以 v0.8 用**复制 + 陈旧检测**（`check` warning + `upgrade` 自动同步），不是软链、不是 .mdc 转换。
 
 ---
 
