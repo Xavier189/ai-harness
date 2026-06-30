@@ -10,7 +10,7 @@
 
 ## 当前焦点
 
-- 已完成 v0.1 基线 + v0.2 + v0.3 + v0.4 + v0.5 + v0.6；schemaVersion **2**；`python3 -m unittest discover -s tests` → **36 tests OK** + `evals/` 4 场景全过。
+- 已完成 v0.1 基线 + v0.2 + v0.3 + v0.4 + v0.5 + v0.6；schemaVersion **2**；`python3 -m unittest discover -s tests` → **40 tests OK** + `evals/` 5 场景全过。
 - 本仓库已**自举**（dogfood）：根目录有 `CLAUDE.md`/`AGENTS.md` router + `docs/ai-harness` + `.harness` + `.agents/skills`（唯一来源）+ `.claude/skills`（软链），新 session 可带记忆冷启动。
 
 ## 已完成（摘要）
@@ -21,7 +21,7 @@
 - **v0.5**：D6 收敛 current/ 冗余、B5 强化测试 + `evals/`、B6 lessons 阈值 check、D5 OUT-OF-SCOPE、C4 `--with-commands`。
 - **v0.6**：AGENTS.md/CLAUDE.md ROUTER 指明 skill 唯一来源；确认 Codex 原生扫描 `.agents/skills/`。
 - **v0.7**：分发打包——`pyproject.toml` + console_scripts（单文件模块 `ai_harness.py`），支持 `uv tool install` / `pipx install` / `uvx --from` 一行安装，`harness` 进 PATH（实测通过）。
-- **v0.8**：Cursor 适配——`--with-cursor` 把 skill 复制到 `.cursor/skills/`（Cursor 不跟随软链，故复制）；`check` 检测副本陈旧，`upgrade` 对已启用的自动同步。本仓库已 dogfood 启用。
+- **v0.8**：Cursor 适配——Cursor 与 Codex 一样原生扫描 `.agents/skills/`，无需 `.cursor/skills/` 副本；`migrate --apply` 可清理 v0.8 遗留副本。
 
 ## 下一步
 
@@ -34,5 +34,5 @@
 
 ## 验证
 
-- `python3 -m unittest discover -s tests`（36 tests）+ `python3 evals/run.py`（4 场景）。
+- `python3 -m unittest discover -s tests`（40 tests）+ `python3 evals/run.py`（5 场景）。
 - 修改 harness 文件后运行 `harness check`（应 0 error）。
