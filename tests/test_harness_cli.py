@@ -564,6 +564,21 @@ class HarnessCliTest(unittest.TestCase):
                 # 不应展开 skill 正文（避免启动加载量膨胀）
                 self.assertNotIn("Phase 生命周期", text)
 
+    # ---- v0.7：fresh checkout / CI 卫生 ----
+
+    def test_check_tolerates_fresh_checkout(self) -> None:
+        # CI / fresh clone：latest.json 被 gitignore 不存在、archive 空目录靠 .gitkeep 保留 → check 仍 0 error。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "claude"), 0)
+            # .gitkeep 让空 archive 目录可被 git 跟踪
+            self.assertTrue((root / ".harness/phases/archive/.gitkeep").exists())
+            # 模拟 fresh clone：运行时产物 latest.json 未被提交、不存在
+            (root / ".harness/checks/latest.json").unlink()
+            self.assertEqual(self.run_cli(root, "check"), 0)  # 不再因 latest.json/archive 报 error
+            result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
+            self.assertEqual(result["summary"]["errors"], 0)
+
     @staticmethod
     def _fingerprint(root: Path) -> dict:
         skip = {".harness/checks/latest.json"}

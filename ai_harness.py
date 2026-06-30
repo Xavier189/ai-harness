@@ -557,6 +557,7 @@ def harness_files(root: Path, name: str, profile: str, agents: set[str]) -> dict
         root / ".harness/phases/current/HANDOFF.md": handoff_doc(),
         root / ".harness/memory/lessons.md": lessons_doc(),
         root / ".harness/checks/latest.json": initial_check_json(),
+        root / ".harness/phases/archive/.gitkeep": archive_keep(),
         root / f"{SKILL_CANONICAL_DIR}/SKILL.md": skill_doc(),
     }
 
@@ -903,6 +904,12 @@ def initial_check_json() -> str:
     ) + "\n"
 
 
+def archive_keep() -> str:
+    # 占位：让空的 archive 目录能被 git 跟踪（git 不跟踪空目录），fresh clone / CI checkout 才有此目录。
+    # phase archive 后这里会出现 <日期>-<slug>/ 归档子目录。
+    return "# 占位文件，勿删：保持空 archive 目录可被版本控制。\n"
+
+
 def parse_agents(value: str) -> set[str]:
     agents = {item.strip().lower() for item in value.split(",") if item.strip()}
     unknown = agents - {"codex", "claude"}
@@ -1162,6 +1169,10 @@ def check_skill_symlink(root: Path) -> list[Issue]:
     return issues
 
 
+# INDEX 可引用、但属于运行时产物（gitignore）的路径：fresh clone / CI checkout 不存在属正常，不校验存在性。
+INDEX_RUNTIME_EXEMPT = {".harness/checks/latest.json"}
+
+
 def check_index_links(root: Path) -> list[Issue]:
     issues: list[Issue] = []
     index = root / "docs/ai-harness/INDEX.md"
@@ -1173,6 +1184,8 @@ def check_index_links(root: Path) -> list[Issue]:
         if candidate in seen:
             continue
         seen.add(candidate)
+        if candidate in INDEX_RUNTIME_EXEMPT:
+            continue
         if not (root / candidate).exists():
             issues.append(Issue("error", "docs/ai-harness/INDEX.md", f"引用路径不存在：{candidate}"))
     return issues
