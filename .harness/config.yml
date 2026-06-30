@@ -1,0 +1,12 @@
+schemaVersion: 2
+project:
+  name: "ai-harness"
+  profile: "core"
+agents:
+  - claude
+  - codex
+paths:
+  docs: docs/ai-harness
+  machine: .harness
+  currentPhase: .harness/phases/current
+  archive: .harness/phases/archive

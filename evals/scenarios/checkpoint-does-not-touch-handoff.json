@@ -1,0 +1,20 @@
+{
+  "description": "v0.5 D6：phase checkpoint 不污染 HANDOFF，HANDOFF 只在 compact 时被写入",
+  "setup": {},
+  "steps": [
+    ["init", "--profile", "core", "--agent", "codex"],
+    ["phase", "start", "demo"],
+    ["phase", "checkpoint", "--status", "execute", "--note", "step-a"],
+    ["phase", "checkpoint", "--status", "verify", "--note", "step-b"]
+  ],
+  "expect": {
+    "exit": 0,
+    "file_not_contains": {
+      ".harness/phases/current/HANDOFF.md": "Checkpoint"
+    },
+    "file_contains": {
+      ".harness/phases/current/EVIDENCE.md": "step-b",
+      ".harness/phases/current/PROGRESS.yml": "step-b"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "description": "已有 current-status.md 时，migrate 把旧内容迁到 STATE.md，再 init 不覆盖",
+  "setup": {
+    "docs/ai-harness/current-status.md": "旧状态保留\n"
+  },
+  "steps": [
+    ["migrate", "--apply"],
+    ["init", "--profile", "core", "--agent", "codex"]
+  ],
+  "expect": {
+    "exit": 0,
+    "file_absent": ["docs/ai-harness/current-status.md"],
+    "file_contains": {
+      "docs/ai-harness/STATE.md": "旧状态保留"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+schemaVersion: 2
+project:
+  name: "ai-harness"
+  profile: "core"
+phase:
+  status: idle
+  slug: ""
+  startedAt: ""
+  currentPath: ".harness/phases/current"
+context:
+  requiredRead:
+    - docs/ai-harness/STATE.md
+    - docs/ai-harness/CONTEXT.md
+    - docs/ai-harness/DECISIONS.md
+  optionalRead:
+    - .harness/phases/current/PLAN.md
+limits:
+  agentsMaxLines: 180
+  stateMaxLines: 150
+  planMaxLines: 300
+  lessonsMaxLines: 200

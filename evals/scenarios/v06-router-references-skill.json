@@ -1,0 +1,17 @@
+{
+  "description": "v0.6：init 后 AGENTS.md 与 CLAUDE.md 的 ROUTER 都单文件引用 .agents 唯一来源",
+  "setup": {},
+  "steps": [
+    ["init", "--profile", "core", "--agent", "codex,claude"]
+  ],
+  "expect": {
+    "exit": 0,
+    "file_contains": {
+      "AGENTS.md": ".agents/skills/ai-harness/SKILL.md",
+      "CLAUDE.md": ".agents/skills/ai-harness/SKILL.md"
+    },
+    "file_not_contains": {
+      "AGENTS.md": "Phase 生命周期"
+    }
+  }
+}

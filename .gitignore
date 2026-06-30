@@ -1,0 +1,121 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+ENV/
+
+# macOS
+.DS_Store
+
+# harness check 生成产物（每次运行变动，制造 diff 噪音）
+.harness/checks/latest.json
+
+# ===== OS 生成文件 =====
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ===== IDE / 编辑器 =====
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# ===== 日志 / 临时文件 =====
+*.log
+logs/
+tmp/
+*.tmp
+*.bak
+
+# ===== 密钥 / 本地环境变量 =====
+# 递归匹配任意层级子目录中的环境变量文件
+#
+# 规范:
+#   .env / .env.local 等 → 含真实密钥, 永远忽略, 绝不入库
+#   .env.example          → 模板, 允许入库作生成真实 .env 的参考
+#                          但严禁出现真实 key/token/明文凭证, 只能给占位符(如 sk-xxxx)
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+*.local
+# .env.* 会吞掉 .env.example; 先忽略, 再用否定放行 .env.example
+.env.*
+!.env.example
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+secrets/
+**/secrets/
+
+# 打包 / 分发
+build/
+dist/
+*.egg
+.eggs/
+develop-eggs/
+sdist/
+wheels/
+pip-wheel-metadata/
+
+# 测试 / 覆盖率
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# Jupyter Notebook / IPython
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# 类型检查 / Linter 缓存
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# pyenv / poetry / pipenv
+.python-version
+Pipfile.lock
+poetry.lock
+
+# ===== Shell =====
+.bash_history
+.zsh_history
+*.sh.bak
+
+# ===== Node / 通用依赖 =====
+node_modules/
+yarn-error.log
+
+# ===== AI 工具本地配置 =====
+# Claude（根目录及任意子目录）
+.claude/settings.local.json
+.claude/.cache/
+**/.claude/settings.local.json
+**/.claude/.cache/
+.claude/logs/
+**/.claude/logs/
+# Cursor（根目录及任意子目录）
+.cursor/
+**/.cursor/
+# 通用本地覆盖配置
+settings.local.json
+**/settings.local.json
