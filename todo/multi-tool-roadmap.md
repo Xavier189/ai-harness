@@ -46,8 +46,9 @@
 | **v0.6** | AGENTS.md 指明 skill 来源（+ 确认 Codex 原生支持）| ROUTER 引用 + 文档化「Codex 原生扫 `.agents/skills/`」事实 | ✅ done |
 | **v0.7** | 分发打包（pyproject + console_scripts）| `uv tool install` / `pipx` / `uvx --from` 一行安装，`harness` 进 PATH；实测通过 | ✅ done |
 | **v0.8** | Cursor 适配（复制，非软链）| `--with-cursor` 复制 `.agents/skills/` → `.cursor/skills/`；`check` 检测陈旧；`upgrade` 自动同步；幂等 + 4 测试 | ✅ done |
-| **v0.9+** | Windsurf / Aider / Gemini / VS Code 按需 | 先查各自 skills 路径与软链支持，再决定软链 or 复制；各加 `--with-<tool>` + check + 测试；不强加 | 低 |
 | **release** | 发布 PyPI + OSS 治理 | `uvx ai-harness` 免 --from；CHANGELOG（LICENSE/CI 已就绪） | 低 |
+
+> **适配范围已收敛**：只做 **Claude / Codex / Cursor** 三个平台。Windsurf / Aider / Gemini / VS Code 等**暂不做**（理由 + 重审条件见 `docs/ai-harness/OUT-OF-SCOPE.md`）——需求出现时再单列版本。
 
 > **Cursor 关键点**：`.mdc` 是 Cursor 的 **rules**（`.cursorrules` 已废弃，迁到 `.cursor/rules/*.mdc` 或 AGENTS.md），不是 skill 包。
 > Cursor 读 **skill** 走 `.cursor/skills/`，且**不跟随软链**，所以 v0.8 用**复制 + 陈旧检测**（`check` warning + `upgrade` 自动同步），不是软链、不是 .mdc 转换。

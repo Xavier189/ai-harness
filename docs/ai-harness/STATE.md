@@ -25,8 +25,8 @@
 
 ## 下一步
 
-1. v0.9（待执行）：Windsurf / Aider / Gemini / VS Code 按需适配（各查 skills 路径 + 软链支持，再定软链 or 复制）。
-2. 发布到 PyPI（让 `uvx ai-harness` / `pipx install ai-harness` 免 `--from`）；补 CHANGELOG（LICENSE/CI 已就绪），见 `todo/backlog.md`。
+1. （可选）发布到 PyPI，让 `uvx ai-harness` / `pipx install ai-harness` 免 `--from`；补 CHANGELOG（LICENSE/CI 已就绪）。
+2. 适配范围已收敛到 Claude / Codex / Cursor；更多平台暂不做（见 `docs/ai-harness/OUT-OF-SCOPE.md`）。
 
 ## 阻塞
 
