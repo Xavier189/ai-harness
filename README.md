@@ -164,7 +164,7 @@ harness init --agent codex,claude
 
 - `--with-hooks` → 生成 `.claude/settings.json`，注入 Stop hook：agent 停止前自动跑 `harness check`。
 - `--with-commands` → 生成 `.claude/commands/harness-{phase,recall,check}.md` 三个 slash command 模板。
-- `--with-cursor` → 把 skill 复制到 `.cursor/skills/ai-harness/`（Cursor 不跟随软链，故为复制副本；`check` 检测副本陈旧，`upgrade` 自动同步）。
+- `--with-cursor` → 把 skill 复制到 `.cursor/skills/ai-harness/`（Cursor 不跟随软链，故为复制副本；`check` 检测副本陈旧，`upgrade` 自动同步）。⚠️ 很多项目 `.gitignore` 默认忽略 `.cursor/`——需加例外 `.cursor/*` + `!.cursor/skills/` 才能让副本随仓库共享，否则团队/clone 拿不到。
 
 > **幂等**：再跑一次 `init` 不会重复写、不会覆盖你改过的内容——已存在的文件直接跳过。
 
