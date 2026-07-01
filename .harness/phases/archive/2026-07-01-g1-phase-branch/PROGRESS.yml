@@ -1,0 +1,9 @@
+phase: "g1-phase-branch"
+status: discover
+tasks: []
+checkpoints: []
+
+checkpoint:
+  at: "2026-07-01T03:21:43+00:00"
+  status: "verify"
+  note: "G1 选项1落地：ensure_phase_branch + phase start --branch + archive phase 分支提示；59 tests OK(+5,真实 git subprocess) / evals 5/5 / check 0e0w；手验被沙箱拒但测试等价覆盖"
