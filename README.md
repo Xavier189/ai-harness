@@ -335,8 +335,8 @@ limits:                 # ← check 用的行数阈值（防文档无界膨胀�
 ## 开发
 
 ```bash
-python3 -m unittest discover -s tests   # 36 单测
-python3 evals/run.py                     # 4 个行为场景
+python3 -m unittest discover -s tests   # 40 单测
+python3 evals/run.py                     # 5 个行为场景
 python3 ai_harness.py check              # 卫生自检，应 0 error
 ```
 

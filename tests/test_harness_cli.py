@@ -612,6 +612,108 @@ class HarnessCliTest(unittest.TestCase):
             self.assertFalse(legacy.exists())
             self.assertEqual(self.run_cli(root, "check"), 0)
 
+    # ---- v0.9 修地基（N1/N2/N3/N4） ----
+
+    def test_update_state_preserves_user_limits_and_context(self) -> None:
+        # N1：phase 操作不得静默丢失用户对 limits/requiredRead 的定制。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            state_path = root / ".harness/state.yml"
+            text = state_path.read_text(encoding="utf-8")
+            text = text.replace("stateMaxLines: 150", "stateMaxLines: 999")
+            text = text.replace(
+                "    - docs/ai-harness/DECISIONS.md",
+                "    - docs/ai-harness/DECISIONS.md\n    - docs/ai-harness/GLOSSARY.md",
+            )
+            state_path.write_text(text, encoding="utf-8")
+
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            after = state_path.read_text(encoding="utf-8")
+            self.assertIn("stateMaxLines: 999", after)          # 用户阈值保真
+            self.assertIn("GLOSSARY.md", after)                 # 用户必读项保真
+            self.assertIn("status: discover", after)            # 定点字段确实更新
+
+    def test_started_at_stable_across_checkpoints(self) -> None:
+        # N1 同源：startedAt 是"开始时间"，checkpoint 不得把它刷成当前时间。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            started = harness.parse_state(root / ".harness/state.yml").get("phase.startedAt")
+            self.assertTrue(started)
+
+            self.assertEqual(self.run_cli(root, "phase", "checkpoint", "--status", "verify"), 0)
+            self.assertEqual(
+                harness.parse_state(root / ".harness/state.yml").get("phase.startedAt"),
+                started,
+            )
+            # archive 回 idle 时清零
+            self.assertEqual(self.run_cli(root, "phase", "archive"), 0)
+            self.assertEqual(harness.parse_state(root / ".harness/state.yml").get("phase.startedAt"), "")
+
+    def test_check_warns_on_schema_version_mismatch(self) -> None:
+        # N2：state.schemaVersion 落后 → warning（兑现 README §5），非 error。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            state_path = root / ".harness/state.yml"
+            state_path.write_text(
+                state_path.read_text(encoding="utf-8").replace(
+                    f"schemaVersion: {harness.SCHEMA_VERSION}", "schemaVersion: 1", 1
+                ),
+                encoding="utf-8",
+            )
+            code = self.run_cli(root, "check")
+            self.assertEqual(code, 0)  # warning 不拦 CI
+            result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
+            messages = [i["message"] for i in result["issues"]]
+            self.assertTrue(any("schemaVersion" in m and "upgrade" in m for m in messages))
+
+    def test_upgrade_bump_clears_schema_mismatch_warning(self) -> None:
+        # N2 闭环：upgrade 后 mismatch warning 消失，且 state 内容仍保真。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            state_path = root / ".harness/state.yml"
+            state_path.write_text(
+                state_path.read_text(encoding="utf-8").replace(
+                    f"schemaVersion: {harness.SCHEMA_VERSION}", "schemaVersion: 1", 1
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(self.run_cli(root, "upgrade", "--apply"), 0)
+            self.assertIn(f"schemaVersion: {harness.SCHEMA_VERSION}", state_path.read_text(encoding="utf-8"))
+            result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
+            # 上一次 check 已被 upgrade 后重跑覆盖前，需主动再 check
+            self.assertEqual(self.run_cli(root, "check"), 0)
+            result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
+            self.assertFalse(any("schemaVersion" in i["message"] for i in result["issues"]))
+
+    def test_check_tolerates_non_numeric_limit(self) -> None:
+        # N3：limits 阈值非数字 → 不崩溃，回退默认 + warning（fail-closed）。
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            state_path = root / ".harness/state.yml"
+            state_path.write_text(
+                state_path.read_text(encoding="utf-8").replace("stateMaxLines: 150", "stateMaxLines: abc"),
+                encoding="utf-8",
+            )
+            code = self.run_cli(root, "check")  # 旧行为：ValueError 崩溃
+            self.assertEqual(code, 0)
+            result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
+            self.assertTrue(any("非整数" in i["message"] for i in result["issues"]))
+
+    def test_version_flag_reports_single_source(self) -> None:
+        # N4：--version 打印 __version__，且与该常量一致。
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            with self.assertRaises(SystemExit) as ctx:
+                harness.main(["--version"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertIn(harness.__version__, buffer.getvalue())
+
     @staticmethod
     def _fingerprint(root: Path) -> dict:
         skip = {".harness/checks/latest.json"}
