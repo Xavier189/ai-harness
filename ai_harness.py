@@ -726,14 +726,32 @@ def write_stop_hook(root: Path, dry_run: bool = False) -> bool:
 
 
 HARNESS_COMMANDS = {
+    "harness-task.md": """---
+description: 开启一个 harness 任务（重构/修 bug/加功能）：带目标开有界 phase
+---
+
+用户要开始的任务：$ARGUMENTS
+
+按序执行并把每步 CLI 输出贴回：
+
+1. `harness next` 看当前状态；若非 idle，先帮用户 `harness phase compact` + `archive` 收尾当前 phase。
+2. 把上面的任务浓缩成一句话目标，跑 `harness task "<目标>" --branch`
+   （目标会预填进 PLAN 的 Goal，`--branch` 顺带建 `phase/<slug>` 分支）。
+3. 读 `docs/ai-harness/CONTEXT.md` + `DECISIONS.md`，把 `.harness/phases/current/PLAN.md`
+   写成自包含 spec：In Scope（点名文件/接口）、Out of Scope、端到端验证步骤。
+4. 推进中关键节点 `harness phase checkpoint --status <state> --note "<一句话>"`。
+5. 完成后 `harness phase compact` → `harness phase archive`。
+
+不确定下一步随时 `harness next`。
+""",
     "harness-phase.md": """---
 description: 引导一个 harness phase：start / checkpoint / compact / archive
 ---
 
-你是在帮用户走 harness phase 生命周期。请按 CLI 顺序执行并解释每一步：
+你是在帮用户走 harness phase 生命周期（开启新任务优先用 `/harness-task`，本命令管推进/收尾）：
 
 1. 若当前 `harness status` 不是 idle，先帮用户决定继续推进还是先 archive。
-2. 用 `harness phase start <slug>` 开 phase（slug 用 kebab-case 概括目标）。
+2. 用 `harness phase start <slug>` 开 phase（或带目标的 `harness task "<目标>"`；slug 用 kebab-case）。
 3. 工作过程中，关键节点用 `harness phase checkpoint --status <state> --note <一句话>`。
    合法 state: discover/discuss/design/plan/execute/verify/compact/archive。
 4. 收尾前 `harness phase compact`，再 `harness phase archive`。

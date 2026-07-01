@@ -1009,6 +1009,16 @@ class HarnessCliTest(unittest.TestCase):
         for cmd in ("harness init", "harness bootstrap", "harness task", "harness next"):
             self.assertIn(cmd, doc)
 
+    def test_with_commands_includes_task_slash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "claude", "--with-commands"), 0)
+            task_cmd = root / ".claude/commands/harness-task.md"
+            self.assertTrue(task_cmd.exists())
+            text = task_cmd.read_text(encoding="utf-8")
+            self.assertIn("$ARGUMENTS", text)       # 接受用户任务描述
+            self.assertIn("harness task", text)
+
     @staticmethod
     def _fingerprint(root: Path) -> dict:
         skip = {".harness/checks/latest.json"}

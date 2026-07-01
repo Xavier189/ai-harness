@@ -129,9 +129,42 @@ harness init --agent codex,claude
 |---|---|
 | **你（人）** | 在终端直接敲 `harness next`；或在 Claude Code 输入框用 `!harness next` 内联执行 |
 | **coding agent**（Claude Code / Codex / Cursor） | agent 通过它自己的「运行终端命令」能力执行 `harness ...`。`SKILL.md` 会告诉 agent 何时该跑哪个——这是**跨三工具统一**的机制（本质就是"跑一条 shell 命令"） |
-| **可选：Claude slash 命令** | `init --with-commands` 会生成 `.claude/commands/harness-{phase,recall,check}.md`，在 Claude Code 里可 `/harness-phase` 调用。**仅 Claude、可选糖**，非必需 |
+| **可选：Claude slash 命令** | `init --with-commands` 生成 `.claude/commands/harness-{task,phase,recall,check}.md`，在 Claude Code 里可 `/harness-task 重构回调模块` 一句开工。**仅 Claude、可选糖**，非必需 |
 
 心智模型：**CLI 是确定性工具；SKILL.md 让 agent 知道去跑它；agent 用 shell 跑。** 不需要给每个工具做一套原生命令——一份 CLI + 一份 skill 就跨工具通用。
+
+### 实战：在 agent 里开一个"重构"任务
+
+你**不用记命令**——用自然语言说目标即可，装好的 skill 会让 agent 自己去跑 `harness`。三种工具做法几乎一样（都是 agent 帮你跑 shell），区别只在 Claude 多一个可选 slash 命令。
+
+**① 你对 agent 说（Claude Code / Codex / Cursor 通用）：**
+
+> 我们要重构 `jd-yanxi-callback` 的话单组装逻辑，用 harness 开个任务来做。
+
+**② agent 会自动做这些**（skill 引导，你能看到它逐条跑）：
+
+```bash
+harness next                                   # 确认当前 idle
+harness task "重构 callback 话单组装逻辑" --slug refactor-callback-assembler --branch
+                                               # 开有界 phase + 建 phase/refactor-callback-assembler 分支，目标预填进 PLAN
+# → agent 读 CONTEXT/DECISIONS，把 PLAN.md 写成 spec（改哪些文件 / 不碰什么 / 怎么验证）
+# → 你确认 spec 后它开始改代码
+harness phase checkpoint --status execute --note "assembler 拆分完成，待补测试"
+harness phase compact                          # 收尾压成 handoff
+harness phase archive                          # 归档回 idle
+```
+
+**③ 不确定下一步？** 任何时候让 agent（或你自己）跑 `harness next`，它会根据当前状态告诉你该干嘛。
+
+**各工具差异：**
+
+| 工具 | 怎么触发 |
+|---|---|
+| **Claude Code** | 直接说目标；或用 slash 命令 `/harness-task 重构 callback 话单组装`（需 `init --with-commands`）；也可 `!harness next` 自己内联跑 |
+| **Codex** | 直接说目标——Codex 读 `.agents/skills/ai-harness/SKILL.md`，用它的 shell 能力跑 `harness ...` |
+| **Cursor** | 直接说目标——Cursor 同样原生扫 `.agents/skills/`，用终端能力跑 `harness ...` |
+
+> 关键：**你负责说"做什么"和确认 spec，harness 负责把这段工作框成可暂停/可恢复/有记录的 phase，agent 负责执行**。换个 session 或换个工具，读 `STATE.md` + `harness next` 就能接着干。
 
 ---
 
