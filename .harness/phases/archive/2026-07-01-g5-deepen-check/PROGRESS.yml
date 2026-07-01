@@ -1,0 +1,9 @@
+phase: "g5-deepen-check"
+status: discover
+tasks: []
+checkpoints: []
+
+checkpoint:
+  at: "2026-07-01T03:04:38+00:00"
+  status: "verify"
+  note: "G5 落地：check_stale_phase + check_required_sections；54 tests OK(+8) / evals 5/5 / check 0e0w；踩坑=占位符裸子串匹配会命中讨论占位符的 PLAN 自身，改用高区分度尾串"
