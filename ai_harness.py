@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = 2
-__version__ = "0.8.0"  # pyproject 与 --version 的单一来源（N4）
+__version__ = "0.10.0"  # pyproject 与 --version 的单一来源（N4）
 PHASE_STATES = (
     "idle",
     "discover",
