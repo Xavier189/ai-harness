@@ -14,8 +14,11 @@
 | 5 | v0.6 | Codex/AGENTS.md 单文件引用 skill | done |
 | 6 | v0.7 | 分发打包：pyproject + console_scripts，`uvx`/`pipx`/`uv tool install` 一行安装 | done |
 | 7 | v0.8 | Cursor 适配：原生扫描 `.agents/skills/`（撤销复制方案） | done |
-| 8 | release | 发布 PyPI（`uvx ai-harness` 免 --from）+ CHANGELOG（LICENSE/CI 已就绪） | planned |
+| 8 | v0.9 | 修地基 N1–N4：state 定点更新保真定制、check 校验 schemaVersion/limits、`--version` 单一来源 | done |
+| 9 | v0.10 | 深化 check（stale/空壳）、G1 `phase start --branch`、`bootstrap` 已有仓库首次接入 | done |
+| 10 | release | 发布 PyPI（`uvx ai-harness` 免 --from）+ CHANGELOG（LICENSE/CI 已就绪） | planned |
 
+> 红线经 **ADR-0001** 重定义：真红线=零依赖 / 不增启动负担 / 可选可回退 / 装用零摩擦；单文件降级为 guardrail。
 > 适配范围已收敛到 Claude / Codex / Cursor；更多平台（Windsurf/Aider/Gemini）**暂不做**，见 `docs/ai-harness/OUT-OF-SCOPE.md`。
 
 详细：分发与多工具路线见 `todo/multi-tool-roadmap.md`；打磨项见 `todo/v0.5-plan.md`；评审依据见 `docs/REVIEW-AND-ROADMAP.md`。
