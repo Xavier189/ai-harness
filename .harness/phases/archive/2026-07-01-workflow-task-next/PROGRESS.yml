@@ -1,0 +1,9 @@
+phase: "workflow-task-next"
+status: discover
+tasks: []
+checkpoints: []
+
+checkpoint:
+  at: "2026-07-01T06:16:21+00:00"
+  status: "verify"
+  note: "最小三件落地：current_plan goal 注入 + harness task + harness next + skill 编码完整循环；72 tests OK(+5)/evals 5/5/check 0e0w；本仓 SKILL 已重生成"
