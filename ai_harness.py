@@ -464,13 +464,14 @@ def policies_doc(profile: str) -> str:
     return base
 
 
-def current_plan(slug: str = "") -> str:
+def current_plan(slug: str = "", goal: str = "") -> str:
     title = slug or "no-active-phase"
+    goal_line = f"- {goal}" if goal else '- 用一句话写清楚"做完什么算完成"。'
     return f"""# Phase Plan: {title}
 
 ## Goal（有边界的目标）
 
-- 用一句话写清楚"做完什么算完成"。
+{goal_line}
 
 ## In Scope / 涉及文件与接口
 
@@ -575,20 +576,22 @@ description: 本仓库用 ai-harness 管理 AI 协作上下文与有边界的工
 - 仅当任务属于 active phase 时，再读 `.harness/phases/current/PLAN.md`。
 - 默认不读 `.harness/phases/archive/**`；需要历史上下文时用 `harness recall <keyword>`。
 
-## Phase 生命周期
-
-合法 state：`idle, discover, discuss, design, plan, execute, verify, compact, archive`。
+## 完整工作流（不确定下一步就跑 `harness next`）
 
 ```bash
-harness status                                   # 看当前 phase
-harness phase start <slug>                        # 开一个有边界的 phase
-harness phase checkpoint --status <state> --note "<note>"
-harness phase compact                             # 收尾前压缩成高保真 handoff
-harness phase archive                             # 归档，回到 idle
-harness recall <keyword>                          # 从 archive/memory 检索
-harness migrate                                   # 既有库旧文件名 -> 新结构（先看 dry-run）
-harness check                                     # 校验 harness 卫生
+harness init                 # ① 已有代码仓库也安全：只加不覆盖、不碰源码
+harness bootstrap            # ② 首次：开 bootstrap-context phase，读代码库填 CONTEXT/DECISIONS/STATE
+harness task "<目标>" [--branch]   # ③ 每个任务：带目标开有界 phase（Goal 预填进 PLAN，--branch 顺带建 phase/<slug>）
+harness phase checkpoint --status <state> --note "<note>"   # ④ 推进：记进度
+harness phase compact        # ⑤ 收尾：压成高保真 handoff
+harness phase archive        # ⑥ 归档回 idle，再开下一个
+harness next                 # 任意时刻：告诉你现在该跑什么
+harness recall <keyword>     # 从 archive/memory 检索历史
+harness check                # 校验 harness 卫生（可挂 Stop hook）
 ```
+
+合法 phase state：`idle, discover, discuss, design, plan, execute, verify, compact, archive`。
+`harness phase start <slug>` 是 `task` 的底层等价物（不预填 goal）；日常优先用 `task`。
 
 > CLI 入口：装好后用 `harness`（`uv tool install ai-harness` 或 `pipx install ai-harness`）；未装可 `uvx --from <repo> ai-harness`，或源码直跑 `python3 ai_harness.py`。
 
@@ -1174,6 +1177,69 @@ def phase_start(args: argparse.Namespace) -> int:
     update_state(root, **{"phase.status": "discover", "phase.slug": slug})
     append_text(root / "docs/ai-harness/STATE.md", f"## Active Phase\n\n- Slug: `{slug}`\n- Status: `discover`\n- Started: `{utc_now()}`")
     print(f"已启动 phase：{slug}")
+    return 0
+
+
+def task(args: argparse.Namespace) -> int:
+    """带目标开一个有界 phase：捕获意图、把 Goal 预填进 PLAN（bootstrap 之后的常规入口）。"""
+    root = Path(args.root).resolve()
+    ensure_initialized(root)
+    state = parse_state(root / ".harness/state.yml")
+    if (state.get("phase.status") or "idle") != "idle":
+        raise SystemExit(f"已有 active phase `{state.get('phase.slug')}`；先 `harness phase compact` + `archive` 再开新任务")
+    goal = args.goal.strip()
+    if not goal:
+        raise SystemExit("任务目标不能为空")
+    fallback = False
+    if args.slug:
+        slug = slugify(args.slug)
+    else:
+        slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", goal).strip("-").lower()[:48].strip("-")
+        if not slug:  # 纯中文等无 ASCII → 兜底
+            slug, fallback = "task", True
+    if getattr(args, "branch", False):
+        ok, msg = ensure_phase_branch(root, slug)
+        print(f"{'  git: ' if ok else '  [warning] git: '}{msg}")
+    current = root / ".harness/phases/current"
+    ensure_dir(current)
+    write_text(current / "PLAN.md", current_plan(slug, goal))
+    write_text(current / "PROGRESS.yml", progress_yml(slug).replace("status: idle", "status: discover"))
+    write_text(current / "EVIDENCE.md", evidence_doc(slug))
+    write_text(current / "HANDOFF.md", handoff_doc(slug))
+    update_state(root, **{"phase.status": "discover", "phase.slug": slug})
+    append_text(root / "docs/ai-harness/STATE.md",
+                f"## Active Phase\n\n- Slug: `{slug}`\n- Status: `discover`\n- Goal: {goal}\n- Started: `{utc_now()}`")
+    print(f"已开始任务 phase：{slug}")
+    print(f"  目标：{goal}")
+    if fallback:
+        print("  提示：目标无 ASCII 字符，slug 用了 'task'；可加 --slug <名字> 指定更清晰的名。")
+    print("  下一步：把 PLAN.md 写成 spec（In Scope / Out of Scope / 端到端验证），推进后 `harness phase checkpoint`。")
+    return 0
+
+
+def next_step(args: argparse.Namespace) -> int:
+    """状态感知的"下一步"叙述器：读 state.yml，告诉你（和 agent）现在该跑什么。"""
+    root = Path(args.root).resolve()
+    if not (root / ".harness/state.yml").exists():
+        print("harness 未初始化 → 运行 `harness init`（已有代码仓库也安全：只加不覆盖）")
+        return 0
+    state = parse_state(root / ".harness/state.yml")
+    status = state.get("phase.status") or "idle"
+    slug = state.get("phase.slug") or ""
+    ctx = root / "docs/ai-harness/CONTEXT.md"
+    ctx_is_template = ctx.exists() and any(p in read_text(ctx) for p in CONTEXT_PLACEHOLDERS)
+    print(f"当前：status=`{status}`" + (f"，phase=`{slug}`" if slug else ""))
+    if status == "idle":
+        if ctx_is_template:
+            print("下一步 → `harness bootstrap`：开 bootstrap-context phase，让 agent 读代码库填 CONTEXT/DECISIONS/STATE")
+        else:
+            print("下一步 → `harness task \"<目标>\" [--branch]`：带目标开一个有界任务")
+            print("   或 → `harness recall <keyword>` 查历史 / `harness check` 自检")
+    elif status == "compact":
+        print("下一步 → review `.harness/phases/current/HANDOFF.md`，然后 `harness phase archive` 归档回 idle")
+    else:  # 活动态
+        print("推进中 → `harness phase checkpoint --status <state> --note \"...\"` 记进度")
+        print("完成后 → `harness phase compact` 压成 handoff，再 `harness phase archive`")
     return 0
 
 
@@ -1788,6 +1854,15 @@ def build_parser() -> argparse.ArgumentParser:
                                help="未 init 时用的 profile")
     bootstrap_cmd.add_argument("--agent", default="codex,claude", help="未 init 时用的 agent 列表")
     bootstrap_cmd.set_defaults(func=bootstrap)
+
+    task_cmd = sub.add_parser("task")
+    task_cmd.add_argument("goal", help="任务目标（一句话；会预填进 PLAN 的 Goal）")
+    task_cmd.add_argument("--slug", help="phase slug（默认从 goal 派生，纯中文则回退 task）")
+    task_cmd.add_argument("--branch", action="store_true", help="opt-in：创建/切换到 phase/<slug> 分支")
+    task_cmd.set_defaults(func=task)
+
+    next_cmd = sub.add_parser("next")
+    next_cmd.set_defaults(func=next_step)
 
     status_cmd = sub.add_parser("status")
     status_cmd.set_defaults(func=status)
