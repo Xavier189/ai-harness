@@ -1,0 +1,9 @@
+phase: "harden-state-check-version"
+status: discover
+tasks: []
+checkpoints: []
+
+checkpoint:
+  at: "2026-07-01T02:36:59+00:00"
+  status: "verify"
+  note: "N1/N2/N3/N4 全部落地：46 tests OK + evals 5/5 + check 0 error + --version 0.8.0；本次 checkpoint 即 dogfood 验证新 update_state"
