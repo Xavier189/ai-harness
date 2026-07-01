@@ -4,9 +4,11 @@ import contextlib
 import importlib.machinery
 import io
 import json
+import re
 import shutil
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -713,6 +715,112 @@ class HarnessCliTest(unittest.TestCase):
                 harness.main(["--version"])
         self.assertEqual(ctx.exception.code, 0)
         self.assertIn(harness.__version__, buffer.getvalue())
+
+    # ---- G5 深化 check（stale phase + required sections） ----
+
+    def _check_messages(self, root: Path) -> list[str]:
+        self.run_cli(root, "check")
+        result = json.loads((root / ".harness/checks/latest.json").read_text(encoding="utf-8"))
+        return [i["message"] for i in result["issues"]]
+
+    def _set_started_days_ago(self, root: Path, days: int) -> None:
+        ts = (datetime.now(timezone.utc) - timedelta(days=days)).replace(microsecond=0).isoformat()
+        p = root / ".harness/state.yml"
+        p.write_text(re.sub(r'startedAt: ".*"', f'startedAt: "{ts}"', p.read_text(encoding="utf-8")), encoding="utf-8")
+
+    def _fill_plan(self, root: Path) -> None:
+        # 写一份不含模板占位、含必备 heading 的 PLAN，避免空壳/heading 检查干扰 stale 测试
+        (root / ".harness/phases/current/PLAN.md").write_text(
+            "# Phase Plan: x\n\n## Goal\n\n真实目标一句话。\n\n## Acceptance Criteria\n\n- 有 handoff。\n",
+            encoding="utf-8",
+        )
+
+    def test_check_warns_on_stale_phase(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            self._fill_plan(root)
+            self._set_started_days_ago(root, 10)
+            msgs = self._check_messages(root)
+            self.assertTrue(any("无 checkpoint" in m for m in msgs))
+            self.assertEqual(self.run_cli(root, "check"), 0)  # 仅 warning，不拦
+
+    def test_recent_checkpoint_clears_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            self._fill_plan(root)
+            self._set_started_days_ago(root, 10)
+            # 一次新 checkpoint → PROGRESS.yml 有新 at → 参考时间刷新，stale 消失（startedAt 仍旧，由 N1 保真）
+            self.assertEqual(self.run_cli(root, "phase", "checkpoint", "--status", "execute"), 0)
+            self.assertFalse(any("无 checkpoint" in m for m in self._check_messages(root)))
+
+    def test_stale_fail_soft_on_bad_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            self._fill_plan(root)
+            p = root / ".harness/state.yml"
+            p.write_text(re.sub(r'startedAt: ".*"', 'startedAt: "not-a-date"', p.read_text(encoding="utf-8")), encoding="utf-8")
+            self.assertEqual(self.run_cli(root, "check"), 0)  # 不崩
+            self.assertFalse(any("无 checkpoint" in m for m in self._check_messages(root)))
+
+    def test_non_numeric_stale_days_falls_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            self._fill_plan(root)
+            self._set_started_days_ago(root, 10)
+            p = root / ".harness/state.yml"
+            p.write_text(
+                p.read_text(encoding="utf-8").replace("lessonsMaxLines: 200", "lessonsMaxLines: 200\n  stalePhaseDays: xyz"),
+                encoding="utf-8",
+            )
+            msgs = self._check_messages(root)
+            self.assertTrue(any("stalePhaseDays 非整数" in m for m in msgs))  # 容错 warning
+            self.assertTrue(any("无 checkpoint" in m for m in msgs))          # 回退默认 7 后仍判 stale
+
+    def test_fresh_phase_plan_shell_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            # 刚 start、PLAN 还是模板 → 空壳 warning
+            self.assertTrue(any("空壳" in m for m in self._check_messages(root)))
+            self._fill_plan(root)
+            self.assertFalse(any("空壳" in m for m in self._check_messages(root)))
+
+    def test_required_section_missing_heading_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            plan = root / ".harness/phases/current/PLAN.md"
+            plan.write_text(plan.read_text(encoding="utf-8").replace("## Acceptance Criteria", "## 验收"), encoding="utf-8")
+            self.assertTrue(any("缺少必备 section" in m and "Acceptance Criteria" in m for m in self._check_messages(root)))
+
+    def test_idle_phase_skips_stale_and_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            # idle：current/ PLAN 是模板含占位，但 status idle → 不查 stale/required
+            msgs = self._check_messages(root)
+            self.assertFalse(any("空壳" in m or "无 checkpoint" in m for m in msgs))
+
+    def test_required_section_placeholders_match_templates(self) -> None:
+        # 防漂移：REQUIRED_SECTIONS 里的占位串必须真出现在模板输出中；heading 亦然。
+        plan = harness.current_plan("x")
+        for ph in harness.REQUIRED_SECTIONS[".harness/phases/current/PLAN.md"]["placeholders"]:
+            self.assertIn(ph, plan)
+        for h in harness.REQUIRED_SECTIONS[".harness/phases/current/PLAN.md"]["headings"]:
+            self.assertIn(h, plan)
+        evidence = harness.evidence_doc("x")
+        for h in harness.REQUIRED_SECTIONS[".harness/phases/current/EVIDENCE.md"]["headings"]:
+            self.assertIn(h, evidence)
 
     @staticmethod
     def _fingerprint(root: Path) -> dict:

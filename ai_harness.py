@@ -34,6 +34,9 @@ PHASE_STATES = (
 )
 CURRENT_FILES = ("PLAN.md", "PROGRESS.yml", "EVIDENCE.md", "HANDOFF.md")
 
+# G5：活动态 phase（开着但未收尾）；idle 不查 stale，compact 已有专门提示，archive 是瞬态。
+ACTIVE_PHASE_STATES = ("discover", "discuss", "design", "plan", "execute", "verify")
+
 # Skill 唯一真实来源放 .agents/，Claude 侧用软链指回，避免多份事实来源。
 SKILL_CANONICAL_DIR = ".agents/skills/ai-harness"
 SKILL_LINK_DIR = ".claude/skills/ai-harness"
@@ -1239,6 +1242,8 @@ def run_checks(root: Path) -> list[Issue]:
     issues.extend(check_index_links(root))
     issues.extend(check_state_consistency(root, state))
     issues.extend(check_schema_version(root, state))
+    check_stale_phase(root, state, issues)
+    issues.extend(check_required_sections(root, state))
     issues.extend(check_layering(root))
     issues.extend(check_skill_symlink(root))
     issues.extend(check_legacy_cursor_copy(root))
@@ -1325,6 +1330,90 @@ def is_local_path(value: str) -> bool:
     if any(ch in value for ch in ("*", ":", "\n", "`", " ", "<", ">")):
         return False
     return True
+
+
+# G5：required-sections 空壳检测。占位串与 current_plan()/evidence_doc() 同源，
+# 由 test_required_section_placeholders_match_templates 守护，模板改动会让该测试变红。
+REQUIRED_SECTIONS = {
+    ".harness/phases/current/PLAN.md": {
+        "headings": ("## Goal", "## Acceptance Criteria"),
+        # 用模板独有的高区分度片段，避免 PLAN 正文"讨论占位符"时误命中（本 phase 即踩过）。
+        "placeholders": ("做完什么算完成", "路径具体到可被 subagent 直接定位"),
+    },
+    # EVIDENCE 早期（discover/design）本就没验证内容，只查 heading 存在，不查占位符（避免早期误吵）。
+    ".harness/phases/current/EVIDENCE.md": {
+        "headings": ("## Verify Checklist",),
+        "placeholders": (),
+    },
+}
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    """解析 ISO 时间戳；无法解析返回 None（fail-soft）。"""
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _latest_checkpoint_ts(root: Path) -> datetime | None:
+    """从 PROGRESS.yml 的 checkpoint 块取最新 at: 时间。"""
+    progress = root / ".harness/phases/current/PROGRESS.yml"
+    if not progress.exists():
+        return None
+    times = []
+    for line in read_text(progress).splitlines():
+        stripped = line.strip()
+        if stripped.startswith("at:"):
+            ts = _parse_ts(clean_scalar(stripped.split(":", 1)[1]))
+            if ts:
+                times.append(ts)
+    return max(times) if times else None
+
+
+def check_stale_phase(root: Path, state: dict[str, str], issues: list[Issue]) -> None:
+    """活动态 phase 太久没 checkpoint → warning（G5）。
+
+    参考时间 = max(startedAt, 最新 checkpoint)；now - 参考 > limits.stalePhaseDays（默认 7）。
+    fail-soft：时间无法解析则跳过，不误报、不崩。
+    """
+    if (state.get("phase.status") or "idle") not in ACTIVE_PHASE_STATES:
+        return
+    started = _parse_ts(state.get("phase.startedAt"))
+    latest_cp = _latest_checkpoint_ts(root)
+    ref = max([t for t in (started, latest_cp) if t], default=None)
+    if ref is None:
+        return
+    days = _limit(state, "limits.stalePhaseDays", 7, issues)
+    age = datetime.now(timezone.utc) - ref
+    if age.total_seconds() > days * 86400:
+        slug = state.get("phase.slug") or "current"
+        issues.append(Issue(
+            "warning", ".harness/state.yml",
+            f"phase `{slug}` 已 {age.days} 天无 checkpoint（阈值 {days}），建议 checkpoint 或 compact",
+        ))
+
+
+def check_required_sections(root: Path, state: dict[str, str]) -> list[Issue]:
+    """活动态 phase 的 PLAN/EVIDENCE 空壳检测（G5）：缺必备 heading 或关键 section 仍是模板占位 → warning。"""
+    issues: list[Issue] = []
+    if (state.get("phase.status") or "idle") == "idle":
+        return issues
+    for rel, spec in REQUIRED_SECTIONS.items():
+        path = root / rel
+        if not path.exists():
+            continue  # 文件缺失由 check_state_consistency 报 error
+        text = read_text(path)
+        for heading in spec["headings"]:
+            if heading not in text:
+                issues.append(Issue("warning", rel, f"缺少必备 section「{heading}」"))
+        for placeholder in spec["placeholders"]:
+            if placeholder in text:
+                issues.append(Issue(
+                    "warning", rel,
+                    f"section 仍是模板占位（含「{placeholder}」），phase 可能是空壳",
+                ))
+    return issues
 
 
 def check_schema_version(root: Path, state: dict[str, str]) -> list[Issue]:
