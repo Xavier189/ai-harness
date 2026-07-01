@@ -6,6 +6,7 @@ import io
 import json
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -821,6 +822,68 @@ class HarnessCliTest(unittest.TestCase):
         evidence = harness.evidence_doc("x")
         for h in harness.REQUIRED_SECTIONS[".harness/phases/current/EVIDENCE.md"]["headings"]:
             self.assertIn(h, evidence)
+
+    # ---- G1 phase↔branch（选项 1，opt-in --branch） ----
+
+    @staticmethod
+    def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=str(root), capture_output=True, text=True,
+        )
+
+    def _init_git(self, root: Path) -> None:
+        self._git(root, "init", "-q")
+        self._git(root, "commit", "--allow-empty", "-q", "-m", "init")
+
+    def test_phase_start_branch_creates_and_switches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._init_git(root)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            code, out = self.run_cli_capture(root, "phase", "start", "demo", "--branch")
+            self.assertEqual(code, 0)
+            self.assertEqual(harness.current_git_branch(root), "phase/demo")
+            self.assertIn("phase/demo", out)
+
+    def test_phase_start_branch_switches_to_existing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._init_git(root)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self._git(root, "checkout", "-q", "-b", "phase/demo")   # 预先建好
+            self._git(root, "checkout", "-q", "-")                  # 切回原分支
+            self.assertNotEqual(harness.current_git_branch(root), "phase/demo")
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo", "--branch"), 0)
+            self.assertEqual(harness.current_git_branch(root), "phase/demo")
+
+    def test_phase_start_branch_fail_soft_when_not_git(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)  # 非 git repo
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            code, out = self.run_cli_capture(root, "phase", "start", "demo", "--branch")
+            self.assertEqual(code, 0)  # 不崩，phase 照常
+            self.assertIn("非 git 仓库", out)
+            self.assertEqual(harness.parse_state(root / ".harness/state.yml").get("phase.status"), "discover")
+
+    def test_phase_start_without_branch_leaves_git_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._init_git(root)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            before = harness.current_git_branch(root)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)  # 无 --branch
+            self.assertEqual(harness.current_git_branch(root), before)  # 分支零变化
+
+    def test_archive_hints_when_on_phase_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._init_git(root)
+            self.assertEqual(self.run_cli(root, "init", "--profile", "core", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo", "--branch"), 0)
+            code, out = self.run_cli_capture(root, "phase", "archive")
+            self.assertEqual(code, 0)
+            self.assertIn("phase 分支", out)
 
     @staticmethod
     def _fingerprint(root: Path) -> dict:
