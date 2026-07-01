@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -36,6 +37,9 @@ CURRENT_FILES = ("PLAN.md", "PROGRESS.yml", "EVIDENCE.md", "HANDOFF.md")
 
 # G5：活动态 phase（开着但未收尾）；idle 不查 stale，compact 已有专门提示，archive 是瞬态。
 ACTIVE_PHASE_STATES = ("discover", "discuss", "design", "plan", "execute", "verify")
+
+# G1：opt-in `phase start --branch` 用的分支前缀。
+PHASE_BRANCH_PREFIX = "phase/"
 
 # Skill 唯一真实来源放 .agents/，Claude 侧用软链指回，避免多份事实来源。
 SKILL_CANONICAL_DIR = ".agents/skills/ai-harness"
@@ -1019,10 +1023,55 @@ def status(args: argparse.Namespace) -> int:
     return 0
 
 
+def git_available() -> bool:
+    return shutil.which("git") is not None
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+
+
+def in_git_repo(root: Path) -> bool:
+    if not git_available():
+        return False
+    result = _git(root, "rev-parse", "--is-inside-work-tree")
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def current_git_branch(root: Path) -> str | None:
+    if not in_git_repo(root):
+        return None
+    result = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def ensure_phase_branch(root: Path, slug: str) -> tuple[bool, str]:
+    """G1：创建/切换到 phase/<slug> 分支。返回 (ok, message)，全程 fail-soft。"""
+    branch = f"{PHASE_BRANCH_PREFIX}{slug}"
+    if not git_available():
+        return False, "git 未安装，跳过分支创建"
+    if not in_git_repo(root):
+        return False, "非 git 仓库，跳过分支创建"
+    if current_git_branch(root) == branch:
+        return True, f"已在分支 {branch}"
+    exists = _git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}").returncode == 0
+    if exists:
+        result, action = _git(root, "checkout", branch), "切换到"
+    else:
+        result, action = _git(root, "checkout", "-b", branch), "创建并切换到"
+    if result.returncode != 0:
+        return False, f"git checkout 失败：{result.stderr.strip()}"
+    return True, f"已{action}分支 {branch}"
+
+
 def phase_start(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     ensure_initialized(root)
     slug = slugify(args.slug)
+    if getattr(args, "branch", False):
+        # 先切/建分支，让 phase 脚手架落在新分支上；git 失败只 warning，不阻断 phase。
+        ok, msg = ensure_phase_branch(root, slug)
+        print(f"{'  git: ' if ok else '  [warning] git: '}{msg}")
     current = root / ".harness/phases/current"
     ensure_dir(current)
     write_text(current / "PLAN.md", current_plan(slug))
@@ -1093,6 +1142,10 @@ def phase_archive(args: argparse.Namespace) -> int:
     update_state(root, **{"phase.status": "idle", "phase.slug": ""})
     write_text(root / "docs/ai-harness/STATE.md", state_doc(parse_state(root / ".harness/state.yml").get("project.name") or root.name))
     print(f"已 archive phase：{archive_dir.relative_to(root)}")
+    branch = current_git_branch(root)
+    if branch and branch.startswith(PHASE_BRANCH_PREFIX):
+        # G1：不自动切回/merge，只提示（选项 1 的边界）。
+        print(f"  git: 你仍在 phase 分支 {branch}，记得 merge 回主干或切回")
     return 0
 
 
@@ -1630,6 +1683,8 @@ def build_parser() -> argparse.ArgumentParser:
     phase_sub = phase.add_subparsers(dest="phase_command", required=True)
     start = phase_sub.add_parser("start")
     start.add_argument("slug")
+    start.add_argument("--branch", action="store_true",
+                       help="opt-in：创建/切换到 phase/<slug> 分支（G1，fail-soft）")
     start.set_defaults(func=phase_start)
     checkpoint = phase_sub.add_parser("checkpoint")
     checkpoint.add_argument("--status", choices=PHASE_STATES)
