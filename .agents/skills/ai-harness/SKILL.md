@@ -15,20 +15,22 @@ description: 本仓库用 ai-harness 管理 AI 协作上下文与有边界的工
 - 仅当任务属于 active phase 时，再读 `.harness/phases/current/PLAN.md`。
 - 默认不读 `.harness/phases/archive/**`；需要历史上下文时用 `harness recall <keyword>`。
 
-## Phase 生命周期
-
-合法 state：`idle, discover, discuss, design, plan, execute, verify, compact, archive`。
+## 完整工作流（不确定下一步就跑 `harness next`）
 
 ```bash
-harness status                                   # 看当前 phase
-harness phase start <slug>                        # 开一个有边界的 phase
-harness phase checkpoint --status <state> --note "<note>"
-harness phase compact                             # 收尾前压缩成高保真 handoff
-harness phase archive                             # 归档，回到 idle
-harness recall <keyword>                          # 从 archive/memory 检索
-harness migrate                                   # 既有库旧文件名 -> 新结构（先看 dry-run）
-harness check                                     # 校验 harness 卫生
+harness init                 # ① 已有代码仓库也安全：只加不覆盖、不碰源码
+harness bootstrap            # ② 首次：开 bootstrap-context phase，读代码库填 CONTEXT/DECISIONS/STATE
+harness task "<目标>" [--branch]   # ③ 每个任务：带目标开有界 phase（Goal 预填进 PLAN，--branch 顺带建 phase/<slug>）
+harness phase checkpoint --status <state> --note "<note>"   # ④ 推进：记进度
+harness phase compact        # ⑤ 收尾：压成高保真 handoff
+harness phase archive        # ⑥ 归档回 idle，再开下一个
+harness next                 # 任意时刻：告诉你现在该跑什么
+harness recall <keyword>     # 从 archive/memory 检索历史
+harness check                # 校验 harness 卫生（可挂 Stop hook）
 ```
+
+合法 phase state：`idle, discover, discuss, design, plan, execute, verify, compact, archive`。
+`harness phase start <slug>` 是 `task` 的底层等价物（不预填 goal）；日常优先用 `task`。
 
 > CLI 入口：装好后用 `harness`（`uv tool install ai-harness` 或 `pipx install ai-harness`）；未装可 `uvx --from <repo> ai-harness`，或源码直跑 `python3 ai_harness.py`。
 

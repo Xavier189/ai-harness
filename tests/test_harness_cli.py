@@ -956,6 +956,59 @@ class HarnessCliTest(unittest.TestCase):
         self.assertIn("STATE.md`", harness.policies_doc("core"))
         self.assertIn("跨版本进度记", harness.policies_doc("core"))
 
+    # ---- 工作流增强：task / next / skill 完整循环 ----
+
+    def test_task_starts_phase_with_goal_prefilled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            code, out = self.run_cli_capture(root, "task", "Fix Login Bug")
+            self.assertEqual(code, 0)
+            state = harness.parse_state(root / ".harness/state.yml")
+            self.assertEqual(state.get("phase.status"), "discover")
+            self.assertEqual(state.get("phase.slug"), "fix-login-bug")  # 从 goal 派生
+            plan = (root / ".harness/phases/current/PLAN.md").read_text(encoding="utf-8")
+            self.assertIn("Fix Login Bug", plan)              # Goal 预填
+            self.assertNotIn("做完什么算完成", plan)          # 占位被替换
+
+    def test_task_chinese_goal_falls_back_to_task_slug(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "task", "修复登录问题"), 0)
+            state = harness.parse_state(root / ".harness/state.yml")
+            self.assertEqual(state.get("phase.slug"), "task")  # 纯中文 → 兜底
+            self.assertIn("修复登录问题", (root / ".harness/phases/current/PLAN.md").read_text(encoding="utf-8"))
+
+    def test_task_refuses_when_phase_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            with self.assertRaises(SystemExit):
+                self.run_cli(root, "task", "另一个任务")
+
+    def test_next_guides_by_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            # idle + CONTEXT 模板 → 指向 bootstrap
+            _, out1 = self.run_cli_capture(root, "next")
+            self.assertIn("bootstrap", out1)
+            # 填了 CONTEXT → 指向 task
+            (root / "docs/ai-harness/CONTEXT.md").write_text("# 项目上下文\n\n真实内容。\n", encoding="utf-8")
+            _, out2 = self.run_cli_capture(root, "next")
+            self.assertIn("harness task", out2)
+            # 活动态 → 指向 checkpoint
+            self.assertEqual(self.run_cli(root, "task", "do x"), 0)
+            _, out3 = self.run_cli_capture(root, "next")
+            self.assertIn("checkpoint", out3)
+
+    def test_skill_doc_encodes_full_loop(self) -> None:
+        doc = harness.skill_doc()
+        for cmd in ("harness init", "harness bootstrap", "harness task", "harness next"):
+            self.assertIn(cmd, doc)
+
     @staticmethod
     def _fingerprint(root: Path) -> dict:
         skip = {".harness/checks/latest.json"}
