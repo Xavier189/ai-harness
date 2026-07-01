@@ -885,6 +885,57 @@ class HarnessCliTest(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("phase 分支", out)
 
+    # ---- bootstrap（已有仓库首次上下文初始化） ----
+
+    def test_bootstrap_starts_context_phase(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            code, out = self.run_cli_capture(root, "bootstrap")
+            self.assertEqual(code, 0)
+            state = harness.parse_state(root / ".harness/state.yml")
+            self.assertEqual(state.get("phase.status"), "discover")
+            self.assertEqual(state.get("phase.slug"), "bootstrap-context")
+            plan = (root / ".harness/phases/current/PLAN.md").read_text(encoding="utf-8")
+            self.assertIn("bootstrap-context", plan)
+            self.assertIn("对称写进两边 CONTEXT", plan)  # 跨仓经验入模板
+
+    def test_bootstrap_auto_inits_and_suggests_java(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pom.xml").write_text("<project/>", encoding="utf-8")  # Java 线索
+            self.assertFalse((root / ".harness/state.yml").exists())
+            code, out = self.run_cli_capture(root, "bootstrap")  # 未 init → 自动 init
+            self.assertEqual(code, 0)
+            self.assertTrue((root / ".harness/state.yml").exists())
+            self.assertIn("pom.xml", out)
+            self.assertIn("java-spring", out)  # Java 栈 profile 建议
+
+    def test_bootstrap_refuses_when_phase_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            with self.assertRaises(SystemExit):
+                self.run_cli(root, "bootstrap")  # 已有 active phase → 拒绝
+
+    def test_check_nudges_when_context_is_template(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            # 刚 init，CONTEXT 是模板 → nudge
+            self.assertTrue(any("CONTEXT 仍是模板" in m for m in self._check_messages(root)))
+            # 填充后 nudge 消失
+            (root / "docs/ai-harness/CONTEXT.md").write_text(
+                "# 项目上下文\n\n## 项目\n\n- 真实定位。\n\n## 架构地图\n\n- 真实架构。\n", encoding="utf-8")
+            self.assertFalse(any("CONTEXT 仍是模板" in m for m in self._check_messages(root)))
+
+    def test_context_placeholders_match_template(self) -> None:
+        # 防漂移：nudge 用的占位串必须真出现在 context_doc 模板里。
+        ctx = harness.context_doc("x")
+        for ph in harness.CONTEXT_PLACEHOLDERS:
+            self.assertIn(ph, ctx)
+
     @staticmethod
     def _fingerprint(root: Path) -> dict:
         skip = {".harness/checks/latest.json"}
