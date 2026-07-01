@@ -41,6 +41,15 @@ ACTIVE_PHASE_STATES = ("discover", "discuss", "design", "plan", "execute", "veri
 # G1：opt-in `phase start --branch` 用的分支前缀。
 PHASE_BRANCH_PREFIX = "phase/"
 
+# bootstrap：探测这些构建文件作为"技术栈线索"（仅列出、不解析内容，保 core 语言无关）。
+BUILD_FILE_HINTS = (
+    "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle",
+    "package.json", "pyproject.toml", "requirements.txt", "go.mod",
+    "Cargo.toml", "Gemfile", "composer.json",
+)
+# bootstrap check nudge：CONTEXT 仍含这些模板占位串 → 提示未 onboarding。与 context_doc() 同源。
+CONTEXT_PLACEHOLDERS = ("在这里补充人读项目目标", "在这里补充稳定 subsystem")
+
 # Skill 唯一真实来源放 .agents/，Claude 侧用软链指回，避免多份事实来源。
 SKILL_CANONICAL_DIR = ".agents/skills/ai-harness"
 SKILL_LINK_DIR = ".claude/skills/ai-harness"
@@ -1064,6 +1073,88 @@ def ensure_phase_branch(root: Path, slug: str) -> tuple[bool, str]:
     return True, f"已{action}分支 {branch}"
 
 
+def detect_stack_hints(root: Path) -> list[str]:
+    """列出仓库根的构建文件作为技术栈线索（不解析内容，保 core 语言无关）。"""
+    return [name for name in BUILD_FILE_HINTS if (root / name).exists()]
+
+
+def bootstrap_plan(hints: list[str]) -> str:
+    hint_line = "、".join(hints) if hints else "（未检测到常见构建文件）"
+    return f"""# Phase Plan: bootstrap-context
+
+## Goal（有边界的目标）
+
+首次 onboarding：读本仓代码库，把 `docs/ai-harness/` 的 CONTEXT/DECISIONS/STATE 从模板填成真实内容，让后续 session 能带记忆冷启动。
+
+## In Scope / 涉及文件与接口
+
+- `docs/ai-harness/CONTEXT.md`：项目定位（一句话）、架构地图（子系统/模块职责与依赖）、domain vocabulary、关键设计约束。
+- `docs/ai-harness/DECISIONS.md`：从代码/配置/README 读出的仍生效关键决策（每条一句话 + 出处）。
+- `docs/ai-harness/STATE.md`：当前焦点、下一步。
+
+检测到的技术栈线索（仅参考）：{hint_line}
+
+## Out of Scope（明确不做）
+
+- 不改任何业务源码；只填 harness 人读层。
+- 不把大段源码/transcript 贴进 docs。
+
+## Tasks
+
+- [ ] 读 README / 构建文件 / 关键源码，蒸馏项目定位与架构。
+- [ ] 填 CONTEXT.md（含 domain vocabulary 与约束）。
+- [ ] 填 DECISIONS.md（关键决策 + 出处）。
+- [ ] 更新 STATE.md 当前焦点。
+- [ ] **若存在关联的兄弟仓库**：每仓保持独立 harness，把跨仓契约（接口/消息/共享 schema）**对称写进两边 CONTEXT 并互相 `../` 指向**——不要在父目录建总 harness。
+- [ ] `harness check` 0 error（CONTEXT nudge 消失即为填充完成信号）。
+
+## 端到端验证（End-to-End Verification）
+
+- `harness check` 不再报「CONTEXT 仍是模板占位」；人读一遍 CONTEXT 能回答"这项目是什么/架构/关键决策"。
+
+## Acceptance Criteria
+
+- CONTEXT/DECISIONS/STATE 均为真实内容，非模板。
+- `harness check` 0 error、无 context nudge。
+"""
+
+
+def bootstrap(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    if not (root / ".harness/state.yml").exists():
+        # 没 init 则先 init（用 bootstrap 传入/默认的 profile+agent）
+        init_harness(argparse.Namespace(
+            root=str(root), profile=args.profile, agent=args.agent, project_name=None,
+            with_hooks=False, with_commands=False, dry_run=False,
+        ))
+    ensure_initialized(root)
+    state = parse_state(root / ".harness/state.yml")
+    if (state.get("phase.status") or "idle") != "idle":
+        raise SystemExit(
+            f"已有 active phase `{state.get('phase.slug')}`；先 `harness phase compact` + `archive` 再 bootstrap"
+        )
+
+    hints = detect_stack_hints(root)
+    slug = "bootstrap-context"
+    current = root / ".harness/phases/current"
+    ensure_dir(current)
+    write_text(current / "PLAN.md", bootstrap_plan(hints))
+    write_text(current / "PROGRESS.yml", progress_yml(slug).replace("status: idle", "status: discover"))
+    write_text(current / "EVIDENCE.md", evidence_doc(slug))
+    write_text(current / "HANDOFF.md", handoff_doc(slug))
+    update_state(root, **{"phase.status": "discover", "phase.slug": slug})
+    append_text(root / "docs/ai-harness/STATE.md", f"## Active Phase\n\n- Slug: `{slug}`\n- Status: `discover`\n- Started: `{utc_now()}`")
+
+    print("已启动 bootstrap-context phase：让 AI agent 按 PLAN.md 读代码库、填 docs/ai-harness/。")
+    if hints:
+        print(f"  技术栈线索（未解析）：{'、'.join(hints)}")
+    profile = state.get("project.profile") or "core"
+    if profile == "core" and any(h == "pom.xml" or h.startswith("build.gradle") for h in hints):
+        print("  建议：检测到 Java 栈，可用 java-spring profile（重跑 `harness init --profile java-spring` 补工程 policy）。")
+    print("  下一步：让 agent 填 CONTEXT.md / DECISIONS.md / STATE.md，完成后 `harness check` 应无 context 提示。")
+    return 0
+
+
 def phase_start(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     ensure_initialized(root)
@@ -1295,6 +1386,7 @@ def run_checks(root: Path) -> list[Issue]:
     issues.extend(check_index_links(root))
     issues.extend(check_state_consistency(root, state))
     issues.extend(check_schema_version(root, state))
+    issues.extend(check_context_filled(root))
     check_stale_phase(root, state, issues)
     issues.extend(check_required_sections(root, state))
     issues.extend(check_layering(root))
@@ -1466,6 +1558,18 @@ def check_required_sections(root: Path, state: dict[str, str]) -> list[Issue]:
                     "warning", rel,
                     f"section 仍是模板占位（含「{placeholder}」），phase 可能是空壳",
                 ))
+    return issues
+
+
+def check_context_filled(root: Path) -> list[Issue]:
+    """bootstrap nudge：CONTEXT.md 仍是 init 模板占位 → warning，提示跑 `harness bootstrap`。"""
+    issues: list[Issue] = []
+    ctx = root / "docs/ai-harness/CONTEXT.md"
+    if ctx.exists() and any(p in read_text(ctx) for p in CONTEXT_PLACEHOLDERS):
+        issues.append(Issue(
+            "warning", "docs/ai-harness/CONTEXT.md",
+            "CONTEXT 仍是模板占位，运行 `harness bootstrap` 让 agent 从代码库填充首次上下文",
+        ))
     return issues
 
 
@@ -1675,6 +1779,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_cmd = sub.add_parser("doctor")
     doctor_cmd.set_defaults(func=doctor)
+
+    bootstrap_cmd = sub.add_parser("bootstrap")
+    bootstrap_cmd.add_argument("--profile", choices=("core", "java-spring"), default="core",
+                               help="未 init 时用的 profile")
+    bootstrap_cmd.add_argument("--agent", default="codex,claude", help="未 init 时用的 agent 列表")
+    bootstrap_cmd.set_defaults(func=bootstrap)
 
     status_cmd = sub.add_parser("status")
     status_cmd.set_defaults(func=status)
