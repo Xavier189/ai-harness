@@ -21,12 +21,10 @@
 - [ ] subagents 定义（`.claude/agents/`）随 init 可选生成（L）。
 
 ## C. phase / git / workflow 深度（H–M）
-现状：ROADMAP 是纯文档，CLI 不感知 numbered phases；无 git 集成。
+现状：ROADMAP 是纯文档，CLI 不感知 numbered phases；git 集成已落地选项 1（phase↔branch）。
 - [ ] CLI 感知 numbered phases：`phase start` 关联 ROADMAP 行、archive 时回写状态（M）。
-- [ ] git 集成：phase↔branch 关联、（收窄）显式 commit、（延后）worktree（H）。对照 GSD「每任务一个 commit」、Superpowers using-git-worktrees。
-      **红线已解禁**（ADR-0001：单文件不再是拦它的理由；只用 `subprocess` 调 git = 零依赖 ✓，git 缺失/非 repo 须 fail-soft）。
-      范围收敛=**选项 1**：仅 phase↔branch（opt-in `--branch`）；auto-commit 收窄成显式 flag（脏树 auto-commit 破坏用户工作树掌控、且难回滚）；worktree YAGNI 延后。
-      优先级：红线过闸但 YAGNI 上不紧急（当前手工桥接几秒钟），排在 G5（深化 check）之后。
+- [x] git 集成 **选项 1 已落地**：`phase start --branch`（opt-in，创建/切 `phase/<slug>`，subprocess 零依赖、fail-soft）+ archive 在 phase 分支时提示。
+- [ ] git 集成 剩余（均 ADR-0001 明确延后）：持久 `git.autoBranch` 开关、显式 `--commit`、worktree、`check` 感知 branch↔phase 一致性（H–M）。
 - [ ] 并行 wave：独立 plan 并行、依赖串行（M）。对照 GSD execute-phase。
 - [ ] compact 自动触发阈值（行数/checkpoint 数）而非纯手动（M）。
 
