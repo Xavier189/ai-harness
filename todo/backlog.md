@@ -2,7 +2,7 @@
 
 > 超出当前 v0.2–v0.4 路线图的欠缺项，从「`ai-harness` 作为独立、成熟、可被他人采用的 OSS 项目」视角盘点。
 > 未排期；剥离成独立仓库后转 issue tracker。每项标注：为什么需要 / 大致做法 / 优先级（H/M/L）。
-> 红线不变：单文件优先、零/少依赖、可选可回退、不增加每次启动加载量。
+> 红线（ADR-0001 重定义）：**零依赖 + 不增启动负担 + 可选可回退 + 装/用零摩擦**；单文件已从红线降级为默认 guardrail（有逃生口，不得单独作为拒功能理由）。
 
 ---
 
@@ -23,7 +23,10 @@
 ## C. phase / git / workflow 深度（H–M）
 现状：ROADMAP 是纯文档，CLI 不感知 numbered phases；无 git 集成。
 - [ ] CLI 感知 numbered phases：`phase start` 关联 ROADMAP 行、archive 时回写状态（M）。
-- [ ] git 集成：每任务/phase 原子 commit、phase↔branch 关联、可选 worktree（H）。对照 GSD「每任务一个 commit」、Superpowers using-git-worktrees。
+- [ ] git 集成：phase↔branch 关联、（收窄）显式 commit、（延后）worktree（H）。对照 GSD「每任务一个 commit」、Superpowers using-git-worktrees。
+      **红线已解禁**（ADR-0001：单文件不再是拦它的理由；只用 `subprocess` 调 git = 零依赖 ✓，git 缺失/非 repo 须 fail-soft）。
+      范围收敛=**选项 1**：仅 phase↔branch（opt-in `--branch`）；auto-commit 收窄成显式 flag（脏树 auto-commit 破坏用户工作树掌控、且难回滚）；worktree YAGNI 延后。
+      优先级：红线过闸但 YAGNI 上不紧急（当前手工桥接几秒钟），排在 G5（深化 check）之后。
 - [ ] 并行 wave：独立 plan 并行、依赖串行（M）。对照 GSD execute-phase。
 - [ ] compact 自动触发阈值（行数/checkpoint 数）而非纯手动（M）。
 
@@ -35,7 +38,8 @@
 
 ## E. 可观测 / 质量（M）
 现状：check 覆盖行数/链接/state/分层。
-- [ ] check 增检：stale phase（开很久没 checkpoint）、orphaned archive、state.yml 与 config.yml 的 schemaVersion 一致性、required sections 存在性（M）。
+- [ ] check 增检（**G5 深化 check，ROI 最高**）：stale phase（开很久没 checkpoint）、orphaned archive、required sections 存在性（M）。
+      注：schemaVersion 一致性 + limits 容错已在 v0.9 修地基（N2/N3）落地，G5 剩余=stale/orphaned/required-sections。
 - [ ] 轻量 metrics：phase 时长、check 命中率（L）。
 - [ ] eval 套件长期化（承接 v0.4 B5），形成 harness 行为回归基线（M）。
 
