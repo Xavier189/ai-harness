@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""AI Harness v0.1.
+"""AI Harness.
 
 单文件 CLI，用于初始化和维护轻量 AI harness：
 人读规则放在 docs/，机器状态和 phase 状态放在 .harness/。
+版本见 `__version__`（pyproject 与 --version 的单一来源）。
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = 2
+__version__ = "0.8.0"  # pyproject 与 --version 的单一来源（N4）
 PHASE_STATES = (
     "idle",
     "discover",
@@ -209,14 +211,77 @@ def clean_scalar(value: str) -> str:
     return value
 
 
+def replace_state_fields(text: str, fields: dict[str, str]) -> str:
+    """定点替换 state.yml/config.yml 中给定字段，其余行原样保留（N1 方案 A）。
+
+    fields 的键用 parse_state 的点号形式（顶层 scalar 如 "schemaVersion"，
+    嵌套如 "phase.status"）。只改命中行——用户对 limits/context/requiredRead
+    的定制全部保真，避免 update_state 全量重渲染造成的静默丢失。
+    """
+
+    def fmt(dotted: str, value: str) -> str:
+        # status 与 schemaVersion 是裸标量；其余沿用模板的双引号风格
+        if dotted in ("phase.status", "schemaVersion"):
+            return str(value)
+        return f'"{value}"'
+
+    out: list[str] = []
+    section = ""
+    for raw_line in text.splitlines():
+        line = raw_line
+        stripped = line.strip()
+        # 顶层 section 头（无缩进、以 : 结尾）
+        if line and not line.startswith(" ") and stripped.endswith(":"):
+            section = stripped[:-1]
+            out.append(line)
+            continue
+        # 顶层 scalar（无缩进、含 :）
+        if line and not line.startswith(" ") and ":" in stripped:
+            key = stripped.split(":", 1)[0].strip()
+            if key in fields:
+                out.append(f"{key}: {fmt(key, fields[key])}")
+                continue
+            out.append(line)
+            continue
+        # 嵌套 "  key: value"
+        if line.startswith("  ") and section and ":" in stripped and not stripped.endswith(":"):
+            key = stripped.split(":", 1)[0].strip()
+            dotted = f"{section}.{key}"
+            if dotted in fields:
+                indent = line[: len(line) - len(line.lstrip())]
+                out.append(f"{indent}{key}: {fmt(dotted, fields[dotted])}")
+                continue
+        out.append(line)
+    result = "\n".join(out)
+    if text.endswith("\n"):
+        result += "\n"
+    return result
+
+
 def update_state(root: Path, **updates: str) -> bool:
     state_path = root / ".harness/state.yml"
-    state = parse_state(state_path)
-    name = updates.get("project.name", state.get("project.name") or root.name)
-    profile = updates.get("project.profile", state.get("project.profile") or "core")
-    status = updates.get("phase.status", state.get("phase.status") or "idle")
-    slug = updates.get("phase.slug", state.get("phase.slug") or "")
-    return write_text(state_path, state_yaml(name, profile, status, slug))
+    if not state_path.exists():
+        # 尚未初始化（正常路径不会到这里）：按模板生成
+        name = updates.get("project.name", root.name)
+        profile = updates.get("project.profile", "core")
+        status = updates.get("phase.status", "idle")
+        slug = updates.get("phase.slug", "")
+        return write_text(state_path, state_yaml(name, profile, status, slug))
+    current = parse_state(state_path)
+    fields: dict[str, str] = {}
+    for key in ("project.name", "project.profile", "phase.slug"):
+        if key in updates:
+            fields[key] = updates[key]
+    if "phase.status" in updates:
+        status = updates["phase.status"]
+        fields["phase.status"] = status
+        old_status = current.get("phase.status") or "idle"
+        if status == "idle":
+            fields["phase.startedAt"] = ""            # 收尾清零
+        elif old_status == "idle":
+            fields["phase.startedAt"] = utc_now()     # 只在进入新 phase 时打时间戳
+        # 其余（非 idle→非 idle，如 checkpoint）保留原 startedAt 不动
+    return write_text(state_path, replace_state_fields(read_text(state_path), fields))
 
 
 def core_readme() -> str:
@@ -752,7 +817,10 @@ def upgrade(args: argparse.Namespace) -> int:
 
     bumped = str(from_version) != str(SCHEMA_VERSION)
     if bumped and not dry:
-        update_state(root)
+        # 显式 bump state.yml 的 schemaVersion（定点替换，保真其余内容）；
+        # 不再依赖 update_state 全量重渲染——否则普通 phase 操作会静默刷版本，N2 就测不到 mismatch。
+        state_path = root / ".harness/state.yml"
+        write_text(state_path, replace_state_fields(read_text(state_path), {"schemaVersion": str(SCHEMA_VERSION)}))
         write_text(root / ".harness/config.yml", config_yml(name, profile, agents))
 
     prefix = "" if args.apply else "[dry-run] "
@@ -1127,14 +1195,29 @@ def check(args: argparse.Namespace) -> int:
     return 1 if any(issue.level == "error" for issue in issues) else 0
 
 
+def _limit(state: dict[str, str], key: str, default: int, issues: list[Issue]) -> int:
+    """读取 limits 阈值，非整数时 fail-closed 回退默认并 warning（N3）。"""
+    raw = state.get(key)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        issues.append(Issue(
+            "warning", ".harness/state.yml",
+            f"{key} 非整数（{raw!r}），已回退默认 {default}",
+        ))
+        return default
+
+
 def run_checks(root: Path) -> list[Issue]:
     issues: list[Issue] = []
     state = parse_state(root / ".harness/state.yml") if (root / ".harness/state.yml").exists() else {}
     limits = {
-        "agents": int(state.get("limits.agentsMaxLines") or 180),
-        "state": int(state.get("limits.stateMaxLines") or 150),
-        "plan": int(state.get("limits.planMaxLines") or 300),
-        "lessons": int(state.get("limits.lessonsMaxLines") or 200),
+        "agents": _limit(state, "limits.agentsMaxLines", 180, issues),
+        "state": _limit(state, "limits.stateMaxLines", 150, issues),
+        "plan": _limit(state, "limits.planMaxLines", 300, issues),
+        "lessons": _limit(state, "limits.lessonsMaxLines", 200, issues),
     }
     for file_name in ("AGENTS.md", "CLAUDE.md"):
         path = root / file_name
@@ -1155,6 +1238,7 @@ def run_checks(root: Path) -> list[Issue]:
 
     issues.extend(check_index_links(root))
     issues.extend(check_state_consistency(root, state))
+    issues.extend(check_schema_version(root, state))
     issues.extend(check_layering(root))
     issues.extend(check_skill_symlink(root))
     issues.extend(check_legacy_cursor_copy(root))
@@ -1241,6 +1325,26 @@ def is_local_path(value: str) -> bool:
     if any(ch in value for ch in ("*", ":", "\n", "`", " ", "<", ">")):
         return False
     return True
+
+
+def check_schema_version(root: Path, state: dict[str, str]) -> list[Issue]:
+    """兑现 README §5：state / config 的 schemaVersion 落后于当前 → warning。
+
+    落后是"该升级"而非"坏状态"，用 warning 不用 error（避免 CI/hook 过激拦截）；
+    提示用户跑 `harness upgrade --apply` 对齐。
+    """
+    issues: list[Issue] = []
+    targets: list[tuple[str, str | None]] = [(".harness/state.yml", state.get("schemaVersion"))]
+    config_path = root / ".harness/config.yml"
+    if config_path.exists():
+        targets.append((".harness/config.yml", parse_state(config_path).get("schemaVersion")))
+    for rel, ver in targets:
+        if ver and str(ver) != str(SCHEMA_VERSION):
+            issues.append(Issue(
+                "warning", rel,
+                f"schemaVersion {ver} ≠ 当前 {SCHEMA_VERSION}，运行 `harness upgrade --apply` 对齐",
+            ))
+    return issues
 
 
 def check_state_consistency(root: Path, state: dict[str, str]) -> list[Issue]:
@@ -1405,6 +1509,7 @@ def archive_summary(archive_dir: Path, slug: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harness")
+    parser.add_argument("--version", action="version", version=f"harness {__version__}")
     parser.add_argument("--root", default=".", help="target project root")
     sub = parser.add_subparsers(dest="command", required=True)
 

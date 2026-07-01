@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-harness"
-version = "0.7.0"
+dynamic = ["version"]
 description = "轻量、单文件、零依赖的仓库级 AI 协作 harness：人读/机器分层 + 有界 phase + compact/archive/recall"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,6 +25,10 @@ Homepage = "https://github.com/Xavier189/ai-harness"
 # 单文件模块（不是 package）——保住「单文件零依赖」招牌，同时可被 console_scripts 引用。
 [tool.setuptools]
 py-modules = ["ai_harness"]
+
+# 版本单一来源：读 ai_harness.__version__（N4，消除 pyproject 与代码漂移）。
+[tool.setuptools.dynamic]
+version = { attr = "ai_harness.__version__" }
 
 # 安装后提供两个等价命令：harness（短）与 ai-harness（全名，给 uvx/pipx 用）。
 [project.scripts]
