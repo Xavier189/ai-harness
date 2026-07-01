@@ -340,6 +340,7 @@ def state_doc(name: str) -> str:
 
 - harness 已初始化。
 - 当前没有 active implementation phase。
+- 跨版本进度记 `ROADMAP.md`；本文只保当前状态（`phase archive` 会重置本文）。
 
 ## 阻塞
 
@@ -428,6 +429,7 @@ def policies_doc(profile: str) -> str:
 - `.harness/` 用于机器可读 state、active phase progress、archive 和生成的 check 输出。
 - 启动文件只负责把 agent 路由到有界 context；它们不是 knowledge base。
 - archive folder 默认不读取。
+- `STATE.md` 是有界的"当前状态"：只写当前 phase / 焦点 / 阻塞；跨版本进度记 `ROADMAP.md`（`phase archive` 会重置 STATE，别在此累积历史）。
 - spec 和 policy 不写 copy/install/research note，除非文件明确是 usage guide。
 
 ## 工程基线（Engineering Baseline）
@@ -1233,6 +1235,7 @@ def phase_archive(args: argparse.Namespace) -> int:
     update_state(root, **{"phase.status": "idle", "phase.slug": ""})
     write_text(root / "docs/ai-harness/STATE.md", state_doc(parse_state(root / ".harness/state.yml").get("project.name") or root.name))
     print(f"已 archive phase：{archive_dir.relative_to(root)}")
+    print("  note: STATE.md 已重置为 idle；跨版本进度请确认记在 ROADMAP.md（STATE 不留存历史）")
     branch = current_git_branch(root)
     if branch and branch.startswith(PHASE_BRANCH_PREFIX):
         # G1：不自动切回/merge，只提示（选项 1 的边界）。

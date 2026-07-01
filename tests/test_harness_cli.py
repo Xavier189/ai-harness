@@ -936,6 +936,26 @@ class HarnessCliTest(unittest.TestCase):
         for ph in harness.CONTEXT_PLACEHOLDERS:
             self.assertIn(ph, ctx)
 
+    # ---- STATE 有界（方向2：进度归 ROADMAP，archive 重置无损） ----
+
+    def test_state_doc_points_progress_to_roadmap(self) -> None:
+        doc = harness.state_doc("x")
+        self.assertIn("ROADMAP", doc)
+        self.assertIn("phase archive", doc)  # 提示本文会被重置
+
+    def test_archive_prints_state_reset_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_cli(root, "init", "--agent", "codex"), 0)
+            self.assertEqual(self.run_cli(root, "phase", "start", "demo"), 0)
+            code, out = self.run_cli_capture(root, "phase", "archive")
+            self.assertEqual(code, 0)
+            self.assertIn("ROADMAP", out)  # 安全提示引导进度归 ROADMAP
+
+    def test_state_bounded_policy_present(self) -> None:
+        self.assertIn("STATE.md`", harness.policies_doc("core"))
+        self.assertIn("跨版本进度记", harness.policies_doc("core"))
+
     @staticmethod
     def _fingerprint(root: Path) -> dict:
         skip = {".harness/checks/latest.json"}
