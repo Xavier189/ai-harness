@@ -1,0 +1,9 @@
+phase: "bootstrap-command"
+status: discover
+tasks: []
+checkpoints: []
+
+checkpoint:
+  at: "2026-07-01T05:07:18+00:00"
+  status: "verify"
+  note: "bootstrap 命令 + check_context_filled nudge 落地；64 tests OK(+5) / evals 5/5 / check 0e0w；真实验证:两 Yanxi 仓填充后无 nudge、G1 --branch 已用于本 phase 开分支"
