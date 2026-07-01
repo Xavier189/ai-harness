@@ -1,0 +1,9 @@
+phase: "state-bounded-progress"
+status: discover
+tasks: []
+checkpoints: []
+
+checkpoint:
+  at: "2026-07-01T05:40:07+00:00"
+  status: "verify"
+  note: "方向2落地：state_doc 指引进度归 ROADMAP + archive 安全提示 + POLICIES STATE-有界条目 + ROADMAP 补 v0.9/v0.10；67 tests OK(+3)/evals 5/5/check 0e0w"
